@@ -1,0 +1,8 @@
+node_modules
+dist
+.git
+.github
+.testenv
+.planning
+design-system
+*.log
