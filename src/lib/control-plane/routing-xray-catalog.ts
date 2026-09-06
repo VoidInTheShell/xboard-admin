@@ -579,7 +579,7 @@ const xraySourceCatalog: CatalogTab[] = [
         id: "xray-stats",
         title: "统计与指标",
         description:
-          "系统统计开关位于 policy.system；stats 是 Xray 顶层统计对象，metrics 是 Prometheus 风格指标入口。",
+          "收集连接和流量统计，并通过 HTTP 提供运行指标。",
         fields: [
           {
             key: "stats",
@@ -597,7 +597,7 @@ const xraySourceCatalog: CatalogTab[] = [
             control: "switch",
             defaultValue: true,
             description:
-              "编辑器投影：metrics 对象存在时启用。指标端点没有身份验证，建议仅绑定回环地址并由已认证的反向代理转发。",
+              "提供 Xray 运行指标。此接口不校验身份，建议仅监听回环地址；如需远程访问，请通过带身份验证的反向代理转发。",
           },
           {
             key: "metrics.listen",

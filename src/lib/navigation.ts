@@ -95,7 +95,7 @@ export const adminNavigation: AdminNavGroup[] = [
 
 export const serverWorkspaceTabs = [
   { title: "入站", value: "inbounds", icon: Layers3 },
-  { title: "主机", value: "hosts", icon: Activity },
+  { title: "发布端点", value: "hosts", icon: Activity },
   { title: "证书管理", value: "certificates", icon: KeyRound },
   { title: "出站", value: "outbounds", icon: Route },
   { title: "路由", value: "routing", icon: ReceiptText },

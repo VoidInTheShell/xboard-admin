@@ -1,19 +1,51 @@
-import * as React from "react"
-import { SlidersHorizontal } from "lucide-react"
-import type { CatalogCondition, CatalogField, CatalogTab } from "@/lib/control-plane/catalog-types"
-import type { ConfigEditorLanguage } from "@/components/ui/config-editor"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field"
-import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Switch } from "@/components/ui/switch"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Textarea } from "@/components/ui/textarea"
-import { cn } from "@/lib/utils"
+import * as React from 'react'
+import { CircleAlert, SlidersHorizontal } from 'lucide-react'
+import type {
+  CatalogCondition,
+  CatalogField,
+  CatalogTab,
+} from '@/lib/control-plane/catalog-types'
+import type { ConfigEditorLanguage } from '@/components/ui/config-editor'
+import { Checkbox } from '@/components/ui/checkbox'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+} from '@/components/ui/input-group'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/utils'
 
 const ConfigEditor = React.lazy(() =>
-  import("@/components/ui/config-editor").then((module) => ({ default: module.ConfigEditor })),
+  import('@/components/ui/config-editor').then((module) => ({
+    default: module.ConfigEditor,
+  })),
 )
 
 export type CatalogValue = string | number | boolean | string[]
@@ -22,24 +54,31 @@ export type CatalogFieldErrors = Record<string, string[]>
 
 function initialValues(tabs: CatalogTab[]): CatalogValues {
   return Object.fromEntries(
-    tabs.flatMap((tab) => tab.sections).flatMap((section) => section.fields).map((field) => [field.key, field.defaultValue ?? defaultFor(field)]),
+    tabs
+      .flatMap((tab) => tab.sections)
+      .flatMap((section) => section.fields)
+      .map((field) => [field.key, field.defaultValue ?? defaultFor(field)]),
   )
 }
 
 function defaultFor(field: CatalogField): CatalogValue {
-  if (field.control === "switch") return false
-  if (field.control === "multiselect") return []
-  return ""
+  if (field.control === 'switch') return false
+  if (field.control === 'multiselect') return []
+  return ''
 }
 
 function matches(condition: CatalogCondition, values: CatalogValues) {
   const current = values[condition.field]
   if (condition.equals !== undefined) {
-    const expected = Array.isArray(condition.equals) ? condition.equals : [condition.equals]
+    const expected = Array.isArray(condition.equals)
+      ? condition.equals
+      : [condition.equals]
     if (!expected.includes(current as never)) return false
   }
   if (condition.notEquals !== undefined) {
-    const blocked = Array.isArray(condition.notEquals) ? condition.notEquals : [condition.notEquals]
+    const blocked = Array.isArray(condition.notEquals)
+      ? condition.notEquals
+      : [condition.notEquals]
     if (blocked.includes(current as never)) return false
   }
   return true
@@ -47,19 +86,24 @@ function matches(condition: CatalogCondition, values: CatalogValues) {
 
 function isVisible(field: CatalogField, values: CatalogValues) {
   if (!field.showWhen) return true
-  const conditions = Array.isArray(field.showWhen) ? field.showWhen : [field.showWhen]
+  const conditions = Array.isArray(field.showWhen)
+    ? field.showWhen
+    : [field.showWhen]
   return conditions.every((condition) => matches(condition, values))
 }
 
 function getCodeLanguage(field: CatalogField): ConfigEditorLanguage {
   if (field.language) return field.language
-  if (field.key.startsWith("subscribe_template.")) return "yaml"
+  if (field.key.startsWith('subscribe_template.')) return 'yaml'
 
   const sample = [field.defaultValue, field.placeholder]
-    .find((candidate): candidate is string => typeof candidate === "string" && candidate.trim().length > 0)
+    .find(
+      (candidate): candidate is string =>
+        typeof candidate === 'string' && candidate.trim().length > 0,
+    )
     ?.trim()
 
-  return sample?.startsWith("{") || sample?.startsWith("[") ? "json" : "text"
+  return sample?.startsWith('{') || sample?.startsWith('[') ? 'json' : 'text'
 }
 
 export function CatalogForm({
@@ -70,9 +114,11 @@ export function CatalogForm({
   errors = {},
   disabled = false,
   onValuesChange,
-  navigationStyle = "sidebar",
-  navigationLabel = "配置步骤",
-  sidebarStickyOffset = "container",
+  navigationStyle = 'sidebar',
+  navigationLabel = '配置步骤',
+  sidebarStickyOffset = 'container',
+  fieldActions = {},
+  focusRequest,
 }: {
   tabs: CatalogTab[]
   ariaLabel: string
@@ -81,17 +127,62 @@ export function CatalogForm({
   errors?: CatalogFieldErrors
   disabled?: boolean
   onValuesChange?: (values: CatalogValues) => void
-  navigationStyle?: "underline" | "sidebar"
+  navigationStyle?: 'underline' | 'sidebar'
   navigationLabel?: string
-  sidebarStickyOffset?: "container" | "page"
+  sidebarStickyOffset?: 'container' | 'page'
+  fieldActions?: Record<string, React.ReactNode>
+  focusRequest?: { key: string; token: number }
 }) {
-  const [uncontrolledValues, setUncontrolledValues] = React.useState<CatalogValues>(() => ({
-    ...initialValues(tabs),
-    ...defaultValues,
-  }))
-  const [activeTab, setActiveTab] = React.useState(tabs[0]?.id ?? "")
-  const resolvedActiveTab = tabs.some((tab) => tab.id === activeTab) ? activeTab : tabs[0]?.id ?? ""
+  const [uncontrolledValues, setUncontrolledValues] =
+    React.useState<CatalogValues>(() => ({
+      ...initialValues(tabs),
+      ...defaultValues,
+    }))
+  const rootRef = React.useRef<HTMLDivElement>(null)
+  const [navigationState, setNavigationState] = React.useState({
+    tab: tabs[0]?.id ?? '',
+    focusToken: 0,
+  })
   const values = controlledValues ?? uncontrolledValues
+  const focusTab =
+    focusRequest &&
+    tabs.find((tab) =>
+      tab.sections.some((section) =>
+        section.fields.some(
+          (field) => field.key === focusRequest.key && isVisible(field, values),
+        ),
+      ),
+    )?.id
+  const activeTab =
+    focusTab && focusRequest?.token !== navigationState.focusToken
+      ? focusTab
+      : navigationState.tab
+  const resolvedActiveTab = tabs.some((tab) => tab.id === activeTab)
+    ? activeTab
+    : (tabs[0]?.id ?? '')
+  React.useEffect(() => {
+    if (!focusRequest || disabled || resolvedActiveTab !== focusTab) return
+    const frame = requestAnimationFrame(() => {
+      const field = Array.from(
+        rootRef.current?.querySelectorAll<HTMLElement>('[data-config-field]') ??
+          [],
+      ).find((element) => element.dataset.configField === focusRequest.key)
+      if (!field) return
+      field.scrollIntoView({ block: 'center', behavior: 'instant' })
+      const control =
+        field.querySelector<HTMLElement>(
+          'input,textarea,[role=combobox],[role=switch],[role=checkbox]',
+        ) ?? field
+      control.focus({ preventScroll: true })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [focusRequest, disabled, resolvedActiveTab, focusTab])
+  const tabHasError = (tab: CatalogTab) =>
+    tab.sections.some((section) =>
+      section.fields.some(
+        (field) => isVisible(field, values) && errors[field.key]?.length,
+      ),
+    )
 
   const update = (key: string, value: CatalogValue) => {
     const next = { ...values, [key]: value }
@@ -101,38 +192,51 @@ export function CatalogForm({
 
   if (!tabs.length) return null
 
-  const sidebarNavigation = navigationStyle === "sidebar"
+  const sidebarNavigation = navigationStyle === 'sidebar'
 
   const navigation = sidebarNavigation ? (
     <aside
       data-sticky-scope={sidebarStickyOffset}
       className={cn(
-        "max-w-full self-start overflow-hidden rounded-2xl border bg-background/95 p-2 shadow-sm backdrop-blur md:sticky md:z-20 md:overflow-y-auto md:overscroll-contain md:[scrollbar-gutter:stable]",
-        sidebarStickyOffset === "page"
-          ? "md:top-16 md:max-h-[calc(100dvh-5rem)]"
-          : "md:top-0 md:max-h-[calc(92dvh-12rem)]",
+        'max-w-full self-start overflow-hidden rounded-2xl border bg-background/95 p-2 shadow-sm backdrop-blur lg:sticky lg:z-20 lg:overflow-y-auto lg:overscroll-contain lg:[scrollbar-gutter:stable]',
+        sidebarStickyOffset === 'page'
+          ? 'lg:top-16 lg:max-h-[calc(100dvh-5rem)]'
+          : 'lg:top-0 lg:max-h-[calc(92dvh-12rem)]',
       )}
     >
-      <div className="hidden px-2.5 pt-1 pb-2 text-xs font-medium tracking-wide text-muted-foreground md:block">{navigationLabel}</div>
-      <div className="px-2.5 pb-2 text-xs text-muted-foreground md:hidden">左右滑动切换配置分类</div>
-      <TabsList className="h-auto w-full max-md:!flex-row max-md:justify-start max-md:overflow-x-auto max-md:overflow-y-hidden md:flex-col md:items-stretch md:justify-start gap-1 rounded-xl bg-transparent p-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <div className="hidden px-2.5 pt-1 pb-2 text-xs font-medium tracking-wide text-muted-foreground lg:block">
+        {navigationLabel}
+      </div>
+      <div className="px-2.5 pb-2 text-xs text-muted-foreground lg:hidden">
+        左右滑动切换配置分类
+      </div>
+      <TabsList className="h-auto w-full max-lg:!flex-row max-lg:justify-start max-lg:overflow-x-auto max-lg:overflow-y-hidden lg:flex-col lg:items-stretch lg:justify-start gap-1 rounded-xl bg-transparent p-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {tabs.map((tab, index) => (
           <TabsTrigger
             key={tab.id}
             value={tab.id}
-            className="group/catalog-step min-h-11 max-md:!w-auto max-md:!min-w-36 flex-none justify-start rounded-xl border border-transparent px-2.5 py-2 text-left shadow-none after:hidden hover:-translate-y-px hover:bg-background/75 hover:shadow-sm active:translate-y-0 active:scale-[0.98] data-[state=active]:border-border data-[state=active]:bg-background data-[state=active]:shadow-sm md:w-full md:min-w-0"
+            className="group/catalog-step min-h-11 max-lg:!w-auto max-lg:!min-w-36 flex-none justify-start rounded-xl border border-transparent px-2.5 py-2 text-left shadow-none after:hidden hover:-translate-y-px hover:bg-background/75 hover:shadow-sm active:translate-y-0 active:scale-[0.98] data-[state=active]:border-border data-[state=active]:bg-background data-[state=active]:shadow-sm lg:w-full lg:min-w-0"
           >
             <span className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-background font-data text-[10px] font-semibold text-muted-foreground transition-colors duration-200 group-data-[state=active]/catalog-step:bg-primary group-data-[state=active]/catalog-step:text-primary-foreground">
-              {String(index + 1).padStart(2, "0")}
+              {String(index + 1).padStart(2, '0')}
             </span>
             <span className="min-w-0 truncate">{tab.title}</span>
+            {tabHasError(tab) ? (
+              <CircleAlert
+                className="ml-auto size-4 shrink-0 text-destructive"
+                aria-label="有配置错误"
+              />
+            ) : null}
           </TabsTrigger>
         ))}
       </TabsList>
     </aside>
   ) : (
     <div className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      <TabsList variant="line" className="h-auto w-max min-w-full justify-start gap-1 rounded-none border-b p-0">
+      <TabsList
+        variant="line"
+        className="h-auto w-max min-w-full justify-start gap-1 rounded-none border-b p-0"
+      >
         {tabs.map((tab) => (
           <TabsTrigger
             key={tab.id}
@@ -140,6 +244,12 @@ export function CatalogForm({
             className="h-10 flex-none rounded-b-none rounded-t-xl border-0 px-3 shadow-none after:bottom-[-1px] after:bg-primary data-[state=active]:border-0 data-[state=active]:text-primary"
           >
             {tab.title}
+            {tabHasError(tab) ? (
+              <CircleAlert
+                className="size-4 text-destructive"
+                aria-label="有配置错误"
+              />
+            ) : null}
           </TabsTrigger>
         ))}
       </TabsList>
@@ -148,18 +258,43 @@ export function CatalogForm({
 
   return (
     <Tabs
+      ref={rootRef}
       value={resolvedActiveTab}
-      onValueChange={setActiveTab}
-      orientation={sidebarNavigation ? "vertical" : "horizontal"}
+      onValueChange={(tab) =>
+        setNavigationState({ tab, focusToken: focusRequest?.token ?? 0 })
+      }
+      orientation={sidebarNavigation ? 'vertical' : 'horizontal'}
       aria-label={ariaLabel}
-      className={cn("relative", sidebarNavigation && "grid gap-4 overflow-visible md:grid-cols-[12rem_minmax(0,1fr)] md:items-start md:gap-6")}
+      className={cn(
+        'relative min-w-0',
+        sidebarNavigation &&
+          'grid grid-cols-[minmax(0,1fr)] gap-4 overflow-visible lg:grid-cols-[12rem_minmax(0,1fr)] lg:items-start lg:gap-6',
+      )}
     >
       {navigation}
-      <div className={cn("min-w-0", disabled && "pointer-events-none opacity-70")} aria-busy={disabled || undefined}>
+      <div
+        className={cn('min-w-0', disabled && 'pointer-events-none opacity-70')}
+        aria-busy={disabled || undefined}
+      >
         {tabs.map((tab) => (
-          <TabsContent key={tab.id} value={tab.id} className={cn(sidebarNavigation ? "pt-0" : "pt-4")}>
-            {tab.description ? <p className="mb-4 text-sm text-muted-foreground">{tab.description}</p> : null}
-            <CatalogTabSections tab={tab} values={values} errors={errors} disabled={disabled} update={update} />
+          <TabsContent
+            key={tab.id}
+            value={tab.id}
+            className={cn(sidebarNavigation ? 'pt-0' : 'pt-4')}
+          >
+            {tab.description ? (
+              <p className="mb-4 text-sm text-muted-foreground">
+                {tab.description}
+              </p>
+            ) : null}
+            <CatalogTabSections
+              tab={tab}
+              values={values}
+              errors={errors}
+              disabled={disabled}
+              update={update}
+              fieldActions={fieldActions}
+            />
           </TabsContent>
         ))}
       </div>
@@ -173,24 +308,33 @@ function CatalogTabSections({
   errors,
   disabled,
   update,
+  fieldActions,
 }: {
   tab: CatalogTab
   values: CatalogValues
   errors: CatalogFieldErrors
   disabled: boolean
   update: (key: string, value: CatalogValue) => void
+  fieldActions: Record<string, React.ReactNode>
 }) {
   const visibleSections = tab.sections
-    .map((section) => ({ section, fields: section.fields.filter((field) => isVisible(field, values)) }))
+    .map((section) => ({
+      section,
+      fields: section.fields.filter((field) => isVisible(field, values)),
+    }))
     .filter(({ fields }) => fields.length > 0)
 
   if (!visibleSections.length) {
     return (
       <Empty className="min-h-56 border">
         <EmptyHeader>
-          <EmptyMedia variant="icon"><SlidersHorizontal aria-hidden="true" /></EmptyMedia>
+          <EmptyMedia variant="icon">
+            <SlidersHorizontal aria-hidden="true" />
+          </EmptyMedia>
           <EmptyTitle>当前组合没有可配置项</EmptyTitle>
-          <EmptyDescription>请先在前面的步骤选择支持此功能的协议、传输或安全模式。</EmptyDescription>
+          <EmptyDescription>
+            请先在前面的步骤选择支持此功能的协议、传输或安全模式。
+          </EmptyDescription>
         </EmptyHeader>
       </Empty>
     )
@@ -199,16 +343,28 @@ function CatalogTabSections({
   return (
     <div className="flex flex-col gap-4">
       {visibleSections.map(({ section, fields }) => (
-        <section key={section.id} className="overflow-hidden rounded-2xl border bg-card">
+        <section
+          key={section.id}
+          className="@container/catalog-section min-w-0 overflow-hidden rounded-2xl border bg-card"
+        >
           <div className="border-b px-4 py-3">
             <h3 className="text-sm font-semibold">{section.title}</h3>
-            {section.description ? <p className="mt-1 text-xs text-muted-foreground">{section.description}</p> : null}
+            {section.description ? (
+              <p className="mt-1 text-xs text-muted-foreground">
+                {section.description}
+              </p>
+            ) : null}
           </div>
-          <FieldGroup className="grid items-start gap-4 p-4 sm:grid-cols-2">
+          <FieldGroup className="grid grid-cols-[minmax(0,1fr)] items-start gap-4 p-4 @min-[34rem]/catalog-section:grid-cols-2">
             {fields.map((field, index) => {
               const nextField = fields[index + 1]
-              const tallControl = field.control === "multiselect" || field.control === "textarea" || field.control === "code"
-              const controlsFollowingTallField = field.control === "switch" && nextField?.control === "multiselect"
+              const tallControl =
+                field.control === 'multiselect' ||
+                field.control === 'textarea' ||
+                field.control === 'code'
+              const controlsFollowingTallField =
+                field.control === 'switch' &&
+                nextField?.control === 'multiselect'
 
               return (
                 <CatalogFieldControl
@@ -218,7 +374,12 @@ function CatalogTabSections({
                   errors={errors[field.key]}
                   disabled={disabled}
                   update={update}
-                  fullWidth={field.span === 2 || tallControl || controlsFollowingTallField}
+                  fullWidth={
+                    field.span === 2 ||
+                    tallControl ||
+                    controlsFollowingTallField
+                  }
+                  action={fieldActions[field.key]}
                 />
               )
             })}
@@ -236,6 +397,7 @@ function CatalogFieldControl({
   disabled,
   update,
   fullWidth,
+  action,
 }: {
   field: CatalogField
   value: CatalogValue | undefined
@@ -243,33 +405,83 @@ function CatalogFieldControl({
   disabled: boolean
   update: (key: string, value: CatalogValue) => void
   fullWidth: boolean
+  action?: React.ReactNode
 }) {
   const reactId = React.useId()
-  const inputId = `${reactId}-${field.key.replace(/[^a-zA-Z0-9_-]/g, "-")}`
+  const inputId = `${reactId}-${field.key.replace(/[^a-zA-Z0-9_-]/g, '-')}`
   const errorId = `${inputId}-error`
   const invalid = Boolean(errors?.length)
-  const wrapperClass = fullWidth ? "sm:col-span-2" : undefined
+  const wrapperClass = cn(
+    'min-w-0',
+    invalid && 'rounded-xl ring-1 ring-destructive p-3',
+    fullWidth && '@min-[34rem]/catalog-section:col-span-2',
+  )
   const describedBy = invalid ? errorId : undefined
 
-  if (field.control === "switch") {
+  if (field.control === 'switch') {
     return (
-      <Field orientation="horizontal" className={cn("min-h-20 rounded-2xl border bg-background p-4", wrapperClass)} data-invalid={invalid} data-disabled={disabled}>
+      <Field
+        orientation="horizontal"
+        data-config-field={field.key}
+        tabIndex={-1}
+        className={cn(
+          'min-h-20 rounded-2xl border bg-background p-4',
+          wrapperClass,
+        )}
+        data-invalid={invalid}
+        data-disabled={disabled}
+      >
         <div className="min-w-0 flex-1 space-y-1">
-          <FieldLabel htmlFor={inputId}>{field.label}{field.required ? <span aria-hidden="true" className="text-destructive">*</span> : null}</FieldLabel>
-          {field.description ? <FieldDescription>{field.description}</FieldDescription> : null}
-          <FieldError id={errorId} errors={errors?.map((message) => ({ message }))} />
+          <FieldLabel htmlFor={inputId}>
+            {field.label}
+            {field.required ? (
+              <span aria-hidden="true" className="text-destructive">
+                *
+              </span>
+            ) : null}
+          </FieldLabel>
+          {field.description ? (
+            <FieldDescription>{field.description}</FieldDescription>
+          ) : null}
+          <FieldError
+            id={errorId}
+            errors={errors?.map((message) => ({ message }))}
+          />
         </div>
-        <Switch className="shrink-0" id={inputId} checked={Boolean(value)} disabled={disabled} aria-invalid={invalid} aria-describedby={describedBy} onCheckedChange={(checked) => update(field.key, checked)} />
+        <Switch
+          className="shrink-0"
+          id={inputId}
+          checked={Boolean(value)}
+          disabled={disabled}
+          aria-invalid={invalid}
+          aria-describedby={describedBy}
+          onCheckedChange={(checked) => update(field.key, checked)}
+        />
       </Field>
     )
   }
 
-  if (field.control === "multiselect") {
+  if (field.control === 'multiselect') {
     const selected = Array.isArray(value) ? value : []
     return (
-      <FieldSet className={cn("gap-3", wrapperClass)} data-invalid={invalid} disabled={disabled}>
-        <FieldLegend className="mb-0" variant="label">{field.label}{field.required ? <span aria-hidden="true" className="ml-1 text-destructive">*</span> : null}</FieldLegend>
-        {field.description ? <FieldDescription>{field.description}</FieldDescription> : null}
+      <FieldSet
+        data-config-field={field.key}
+        tabIndex={-1}
+        className={cn('gap-3', wrapperClass)}
+        data-invalid={invalid}
+        disabled={disabled}
+      >
+        <FieldLegend className="mb-0" variant="label">
+          {field.label}
+          {field.required ? (
+            <span aria-hidden="true" className="ml-1 text-destructive">
+              *
+            </span>
+          ) : null}
+        </FieldLegend>
+        {field.description ? (
+          <FieldDescription>{field.description}</FieldDescription>
+        ) : null}
         <div className="grid gap-2 sm:grid-cols-2">
           {field.options?.map((option) => (
             <label
@@ -281,91 +493,233 @@ function CatalogFieldControl({
                 disabled={disabled}
                 aria-invalid={invalid}
                 aria-describedby={describedBy}
-                onCheckedChange={(checked) => update(field.key, checked ? [...selected, option.value] : selected.filter((item) => item !== option.value))}
+                onCheckedChange={(checked) =>
+                  update(
+                    field.key,
+                    checked
+                      ? [...selected, option.value]
+                      : selected.filter((item) => item !== option.value),
+                  )
+                }
               />
               <span>{option.label}</span>
             </label>
           ))}
         </div>
-        <FieldError id={errorId} errors={errors?.map((message) => ({ message }))} />
+        <FieldError
+          id={errorId}
+          errors={errors?.map((message) => ({ message }))}
+        />
       </FieldSet>
     )
   }
 
-  if (field.control === "select") {
+  if (field.control === 'select') {
+    const emptyOption = `${inputId}-empty`
+    const selection = String(value ?? '')
+    const selectValue =
+      selection === '' && field.options?.some((option) => option.value === '')
+        ? emptyOption
+        : selection
     return (
-      <Field className={wrapperClass} data-invalid={invalid} data-disabled={disabled}>
-        <FieldLabel htmlFor={inputId}>{field.label}{field.required ? <span aria-hidden="true" className="text-destructive">*</span> : null}</FieldLabel>
-        <Select value={String(value ?? "")} disabled={disabled} onValueChange={(next) => update(field.key, next)}>
-          <SelectTrigger id={inputId} className="w-full" aria-invalid={invalid} aria-describedby={describedBy}><SelectValue placeholder={field.placeholder} /></SelectTrigger>
-          <SelectContent><SelectGroup>{field.options?.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectGroup></SelectContent>
+      <Field
+        data-config-field={field.key}
+        tabIndex={-1}
+        className={wrapperClass}
+        data-invalid={invalid}
+        data-disabled={disabled}
+      >
+        <FieldLabel htmlFor={inputId}>
+          {field.label}
+          {field.required ? (
+            <span aria-hidden="true" className="text-destructive">
+              *
+            </span>
+          ) : null}
+        </FieldLabel>
+        <Select
+          value={selectValue}
+          disabled={disabled}
+          onValueChange={(next) =>
+            update(field.key, next === emptyOption ? '' : next)
+          }
+        >
+          <SelectTrigger
+            id={inputId}
+            className="w-full"
+            aria-invalid={invalid}
+            aria-describedby={describedBy}
+          >
+            <SelectValue
+              placeholder={
+                field.placeholder ?? (field.required ? '请选择' : '使用默认值')
+              }
+            />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectGroup>
+              {field.options?.map((option) => (
+                <SelectItem
+                  key={option.value}
+                  value={option.value === '' ? emptyOption : option.value}
+                >
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectGroup>
+          </SelectContent>
         </Select>
-        {field.description ? <FieldDescription>{field.description}</FieldDescription> : null}
-        <FieldError id={errorId} errors={errors?.map((message) => ({ message }))} />
+        {field.description ? (
+          <FieldDescription>{field.description}</FieldDescription>
+        ) : null}
+        <FieldError
+          id={errorId}
+          errors={errors?.map((message) => ({ message }))}
+        />
       </Field>
     )
   }
 
-  if (field.control === "code") {
+  if (field.control === 'code') {
     return (
-      <Field className={wrapperClass} data-invalid={invalid} data-disabled={disabled}>
-        <FieldLabel>{field.label}{field.required ? <span aria-hidden="true" className="text-destructive">*</span> : null}</FieldLabel>
+      <Field
+        data-config-field={field.key}
+        tabIndex={-1}
+        aria-invalid={invalid}
+        aria-describedby={describedBy}
+        className={wrapperClass}
+        data-invalid={invalid}
+        data-disabled={disabled}
+      >
+        <FieldLabel>
+          {field.label}
+          {field.required ? (
+            <span aria-hidden="true" className="text-destructive">
+              *
+            </span>
+          ) : null}
+        </FieldLabel>
         <React.Suspense fallback={<ConfigEditorFallback rows={field.rows} />}>
           <ConfigEditor
             label={field.label}
             language={getCodeLanguage(field)}
             rows={field.rows}
             placeholder={field.placeholder}
-            value={String(value ?? "")}
+            value={String(value ?? '')}
             onChange={(next) => update(field.key, next)}
             disabled={disabled}
           />
         </React.Suspense>
-        {field.description ? <FieldDescription>{field.description}</FieldDescription> : null}
-        <FieldError id={errorId} errors={errors?.map((message) => ({ message }))} />
+        {field.description ? (
+          <FieldDescription>{field.description}</FieldDescription>
+        ) : null}
+        <FieldError
+          id={errorId}
+          errors={errors?.map((message) => ({ message }))}
+        />
       </Field>
     )
   }
 
-  if (field.control === "textarea") {
+  if (field.control === 'textarea') {
     return (
-      <Field className={wrapperClass} data-invalid={invalid} data-disabled={disabled}>
-        <FieldLabel htmlFor={inputId}>{field.label}{field.required ? <span aria-hidden="true" className="text-destructive">*</span> : null}</FieldLabel>
+      <Field
+        data-config-field={field.key}
+        tabIndex={-1}
+        className={wrapperClass}
+        data-invalid={invalid}
+        data-disabled={disabled}
+      >
+        <FieldLabel htmlFor={inputId}>
+          {field.label}
+          {field.required ? (
+            <span aria-hidden="true" className="text-destructive">
+              *
+            </span>
+          ) : null}
+        </FieldLabel>
         <Textarea
           id={inputId}
           rows={field.rows ?? 4}
           placeholder={field.placeholder}
-          value={String(value ?? "")}
+          value={String(value ?? '')}
           onChange={(event) => update(field.key, event.target.value)}
           spellCheck
           disabled={disabled}
           aria-invalid={invalid}
           aria-describedby={describedBy}
         />
-        {field.description ? <FieldDescription>{field.description}</FieldDescription> : null}
-        <FieldError id={errorId} errors={errors?.map((message) => ({ message }))} />
+        {field.description ? (
+          <FieldDescription>{field.description}</FieldDescription>
+        ) : null}
+        <FieldError
+          id={errorId}
+          errors={errors?.map((message) => ({ message }))}
+        />
       </Field>
     )
   }
 
+  const InputControl = action ? InputGroupInput : Input
+  const input = (
+    <InputControl
+      id={inputId}
+      type={
+        field.control === 'password' || field.sensitive
+          ? 'password'
+          : field.control === 'number'
+            ? 'number'
+            : 'text'
+      }
+      inputMode={field.control === 'number' ? 'numeric' : undefined}
+      className={field.control === 'tags' ? 'font-data text-xs' : undefined}
+      placeholder={field.placeholder}
+      value={String(value ?? '')}
+      onChange={(event) =>
+        update(
+          field.key,
+          field.control === 'number' && event.target.value !== ''
+            ? Number(event.target.value)
+            : event.target.value,
+        )
+      }
+      autoComplete={field.sensitive ? 'new-password' : undefined}
+      disabled={disabled}
+      aria-invalid={invalid}
+      aria-describedby={describedBy}
+    />
+  )
   return (
-    <Field className={wrapperClass} data-invalid={invalid} data-disabled={disabled}>
-      <FieldLabel htmlFor={inputId}>{field.label}{field.required ? <span aria-hidden="true" className="text-destructive">*</span> : null}</FieldLabel>
-      <Input
-        id={inputId}
-        type={field.control === "password" || field.sensitive ? "password" : field.control === "number" ? "number" : "text"}
-        inputMode={field.control === "number" ? "numeric" : undefined}
-        className={field.control === "tags" ? "font-data text-xs" : undefined}
-        placeholder={field.placeholder}
-        value={String(value ?? "")}
-        onChange={(event) => update(field.key, field.control === "number" && event.target.value !== "" ? Number(event.target.value) : event.target.value)}
-        autoComplete={field.sensitive ? "new-password" : undefined}
-        disabled={disabled}
-        aria-invalid={invalid}
-        aria-describedby={describedBy}
+    <Field
+      data-config-field={field.key}
+      tabIndex={-1}
+      className={wrapperClass}
+      data-invalid={invalid}
+      data-disabled={disabled}
+    >
+      <FieldLabel htmlFor={inputId}>
+        {field.label}
+        {field.required ? (
+          <span aria-hidden="true" className="text-destructive">
+            *
+          </span>
+        ) : null}
+      </FieldLabel>
+      {action ? (
+        <InputGroup>
+          {input}
+          <InputGroupAddon align="inline-end">{action}</InputGroupAddon>
+        </InputGroup>
+      ) : (
+        input
+      )}
+      {field.description ? (
+        <FieldDescription>{field.description}</FieldDescription>
+      ) : null}
+      <FieldError
+        id={errorId}
+        errors={errors?.map((message) => ({ message }))}
       />
-      {field.description ? <FieldDescription>{field.description}</FieldDescription> : null}
-      <FieldError id={errorId} errors={errors?.map((message) => ({ message }))} />
     </Field>
   )
 }
@@ -374,7 +728,10 @@ function ConfigEditorFallback({ rows = 8 }: { rows?: number }) {
   const height = Math.min(Math.max(rows * 24 + 52, 184), 520)
 
   return (
-    <div className="overflow-hidden rounded-2xl border bg-card shadow-xs" style={{ height }}>
+    <div
+      className="overflow-hidden rounded-2xl border bg-card shadow-xs"
+      style={{ height }}
+    >
       <div className="h-14 animate-pulse border-b bg-muted/50 motion-reduce:animate-none" />
       <div className="h-full animate-pulse bg-[#1e1e1e] motion-reduce:animate-none" />
     </div>
