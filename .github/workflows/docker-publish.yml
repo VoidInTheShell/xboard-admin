@@ -67,6 +67,22 @@ jobs:
           curl --fail --silent --show-error http://127.0.0.1:18080/unitedearthgov > "${admin_page}"
           grep --fixed-strings '<title>XBoard Admin</title>' "${admin_page}" > /dev/null
           grep --fixed-strings 'data-xboard-admin-shell="standalone"' "${admin_page}" > /dev/null
+          grep --fixed-strings '/unitedearthgov/assets/' "${admin_page}" > /dev/null
+          js_path=$(grep -oE '/unitedearthgov/assets/[^" ]+\.js' "${admin_page}" | head -n 1)
+          test -n "${js_path}"
+          js_type=$(curl --fail --silent --show-error --output /dev/null --write-out '%{content_type}' "http://127.0.0.1:18080${js_path}")
+          case "${js_type}" in
+            application/javascript*|text/javascript*) ;;
+            *) echo "Unexpected administrator JavaScript content type" >&2; exit 1 ;;
+          esac
+          css_path=$(grep -oE '/unitedearthgov/assets/[^" ]+\.css' "${admin_page}" | head -n 1 || true)
+          if [ -n "${css_path}" ]; then
+            css_type=$(curl --fail --silent --show-error --output /dev/null --write-out '%{content_type}' "http://127.0.0.1:18080${css_path}")
+            case "${css_type}" in
+              text/css*) ;;
+              *) echo "Unexpected administrator stylesheet content type" >&2; exit 1 ;;
+            esac
+          fi
 
   build-and-push:
     name: Publish multi-architecture image
@@ -214,6 +230,13 @@ jobs:
           grep --fixed-strings '<title>XBoard Admin</title>' "${admin_page}" > /dev/null
           grep --fixed-strings 'data-xboard-admin-shell="standalone"' "${admin_page}" > /dev/null
           grep --fixed-strings '/unitedearthgov/assets/' "${admin_page}" > /dev/null
+          js_path=$(grep -oE '/unitedearthgov/assets/[^" ]+\.js' "${admin_page}" | head -n 1)
+          test -n "${js_path}"
+          js_type=$(curl --fail --silent --show-error --output /dev/null --write-out '%{content_type}' "${PANEL_URL}${js_path}")
+          case "${js_type}" in
+            application/javascript*|text/javascript*) ;;
+            *) echo "Unexpected public administrator JavaScript content type" >&2; exit 1 ;;
+          esac
 
       - name: Remove deployment bundle
         if: always()
