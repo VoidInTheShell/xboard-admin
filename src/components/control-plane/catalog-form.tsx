@@ -119,6 +119,7 @@ export function CatalogForm({
   sidebarStickyOffset = 'container',
   fieldActions = {},
   focusRequest,
+  tabContent = {},
 }: {
   tabs: CatalogTab[]
   ariaLabel: string
@@ -132,6 +133,7 @@ export function CatalogForm({
   sidebarStickyOffset?: 'container' | 'page'
   fieldActions?: Record<string, React.ReactNode>
   focusRequest?: { key: string; token: number }
+  tabContent?: Record<string, React.ReactNode>
 }) {
   const [uncontrolledValues, setUncontrolledValues] =
     React.useState<CatalogValues>(() => ({
@@ -282,19 +284,23 @@ export function CatalogForm({
             value={tab.id}
             className={cn(sidebarNavigation ? 'pt-0' : 'pt-4')}
           >
-            {tab.description ? (
-              <p className="mb-4 text-sm text-muted-foreground">
-                {tab.description}
-              </p>
-            ) : null}
-            <CatalogTabSections
-              tab={tab}
-              values={values}
-              errors={errors}
-              disabled={disabled}
-              update={update}
-              fieldActions={fieldActions}
-            />
+            {tabContent[tab.id] ?? (
+              <>
+                {tab.description ? (
+                  <p className="mb-4 text-sm text-muted-foreground">
+                    {tab.description}
+                  </p>
+                ) : null}
+                <CatalogTabSections
+                  tab={tab}
+                  values={values}
+                  errors={errors}
+                  disabled={disabled}
+                  update={update}
+                  fieldActions={fieldActions}
+                />
+              </>
+            )}
           </TabsContent>
         ))}
       </div>

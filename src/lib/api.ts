@@ -73,6 +73,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
 export class AdminApiClient {
   private readonly authData: string
   private readonly onUnauthorized?: () => void
+  readonly clientId: string
 
   constructor(
     authData: string,
@@ -80,11 +81,13 @@ export class AdminApiClient {
   ) {
     this.authData = authData
     this.onUnauthorized = onUnauthorized
+    this.clientId = getAdminClientId()
   }
 
   async request<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
     const headers = new Headers(options.headers)
     headers.set("Authorization", this.authData)
+    headers.set("X-Xboard-Admin-Client-Id", this.clientId)
 
     try {
       return await apiRequest<T>(`${adminApiBase}/${path.replace(/^\/+/, "")}`, {
@@ -112,6 +115,7 @@ export class AdminApiClient {
       Accept: "text/csv, application/octet-stream, application/json",
       Authorization: this.authData,
       "Content-Type": "application/json",
+      "X-Xboard-Admin-Client-Id": this.clientId,
     })
     const response = await fetch(buildUrl(`${adminApiBase}/${path.replace(/^\/+/, "")}`), {
       method,
@@ -135,6 +139,44 @@ export class AdminApiClient {
     const filename = disposition.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i)?.[1]
     return { blob: await response.blob(), filename: filename ? decodeURIComponent(filename) : "download.csv" }
   }
+
+  async stream(path: string, query?: ApiRequestOptions["query"], signal?: AbortSignal) {
+    const response = await fetch(buildUrl(`${adminApiBase}/${path.replace(/^\/+/, "")}`, query), {
+      method: "GET",
+      credentials: "same-origin",
+      headers: {
+        Accept: "text/event-stream",
+        Authorization: this.authData,
+        "X-Xboard-Admin-Client-Id": this.clientId,
+      },
+      signal,
+    })
+
+    if (!response.ok) {
+      const payload = await readPayload(response)
+      if (response.status === 401 || response.status === 403) this.onUnauthorized?.()
+      throw new ApiError(
+        messageFromPayload(payload) ?? fallbackResponseMessage(response, "同步连接失败"),
+        response.status,
+        payload,
+      )
+    }
+
+    return response
+  }
+}
+
+const adminClientIdStorageKey = "xboard-admin-client-id-v1"
+
+function getAdminClientId() {
+  const existing = sessionStorage.getItem(adminClientIdStorageKey)
+  if (existing && /^[A-Za-z0-9_-]{1,64}$/.test(existing)) return existing
+
+  const created = typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID().replaceAll("-", "")
+    : Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) => byte.toString(16).padStart(2, "0")).join("")
+  sessionStorage.setItem(adminClientIdStorageKey, created)
+  return created
 }
 
 function buildUrl(path: string, query?: ApiRequestOptions["query"]) {

@@ -2,6 +2,7 @@ import * as React from "react"
 import { AlertCircle, Check, LoaderCircle, RefreshCw, Save } from "lucide-react"
 import { toast } from "sonner"
 import { CatalogForm, type CatalogFieldErrors, type CatalogValues } from "@/components/control-plane/catalog-form"
+import { McpSettingsPanel } from "@/components/control-plane/mcp-settings-panel"
 import { PageHeader } from "@/components/layout/page-header"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -20,6 +21,20 @@ import {
   type ConfigGroups,
 } from "@/lib/config-settings"
 import { systemSettingsCatalog } from "@/lib/system-settings-catalog"
+import type { CatalogTab } from "@/lib/control-plane/catalog-types"
+
+const mcpTab: CatalogTab = {
+  id: "mcp",
+  title: "MCP 服务",
+  description: "管理 Agent 访问、导入配置和前端同步状态。",
+  sections: [],
+}
+
+function withMcpTab(tabs: CatalogTab[]) {
+  const safeIndex = tabs.findIndex((tab) => tab.id === "safe")
+  const insertAt = safeIndex >= 0 ? safeIndex + 1 : tabs.length
+  return [...tabs.slice(0, insertAt), mcpTab, ...tabs.slice(insertAt)]
+}
 
 export function SettingsPage() {
   const api = useAdminApi()
@@ -46,7 +61,7 @@ export function SettingsPage() {
           api.get<unknown>("theme/getThemes", undefined, controller.signal).catch(() => null),
         ])
         const activeTheme = getActiveTheme(themePayload) ?? String(groups.frontend?.frontend_theme ?? "")
-        const nextCatalog = withThemeOptions(systemSettingsCatalog, getThemeNames(themePayload), activeTheme)
+        const nextCatalog = withMcpTab(withThemeOptions(systemSettingsCatalog, getThemeNames(themePayload), activeTheme))
         const nextValues = createConfigValues(nextCatalog, groups)
         setCatalog(nextCatalog)
         setValues(nextValues)
@@ -143,6 +158,7 @@ export function SettingsPage() {
               navigationStyle="sidebar"
               navigationLabel="配置分类"
               sidebarStickyOffset="page"
+              tabContent={{ mcp: <McpSettingsPanel /> }}
             />
           ) : null}
         </CardContent>
