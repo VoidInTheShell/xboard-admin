@@ -34,6 +34,7 @@ set_env_value() {
 [ -n "$ADMIN_IMAGE" ] || fail "admin image argument is required"
 [ -n "$REGISTRY_USER" ] || fail "registry user argument is required"
 [ "$(realpath -m "$TARGET_DIR")" = "$EXPECTED_TARGET" ] || fail "unexpected target directory"
+[[ "$ADMIN_IMAGE" =~ ^ghcr\.io/voidintheshell/xboard-admin:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]] || fail "admin image must be an xboard-admin GHCR image with a version tag"
 
 IFS= read -r REGISTRY_TOKEN || true
 [ -n "${REGISTRY_TOKEN:-}" ] || fail "registry token was not provided on stdin"
@@ -71,7 +72,7 @@ for _ in $(seq 1 45); do
     status=$(sudo -n docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' xboard-admin 2>/dev/null || true)
     if [ "$status" = "healthy" ] || [ "$status" = "running" ]; then
         sudo -n docker exec xboard-admin wget -q -O /dev/null http://127.0.0.1/healthz
-        admin_page=$(sudo -n docker exec xboard-admin wget -q -O - http://127.0.0.1/unitedearthgov)
+        admin_page=$(sudo -n docker exec xboard-admin wget -q -O - http://127.0.0.1/standalone-admin-smoke/)
         printf '%s' "$admin_page" | grep -F '<title>XBoard Admin</title>' >/dev/null
         printf '%s' "$admin_page" | grep -F 'data-xboard-admin-shell="standalone"' >/dev/null
         sudo -n docker image prune -f >/dev/null

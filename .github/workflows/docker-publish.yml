@@ -44,7 +44,7 @@ jobs:
 
       - name: Build standalone administrator assets
         env:
-          VITE_BASE_PATH: /unitedearthgov/
+          VITE_BASE_PATH: ./
         run: npm run build
 
       - name: Validate administrator asset base
@@ -52,32 +52,34 @@ jobs:
           set -Eeuo pipefail
           grep --fixed-strings '<title>XBoard Admin</title>' dist/index.html > /dev/null
           grep --fixed-strings 'data-xboard-admin-shell="standalone"' dist/index.html > /dev/null
-          grep -R --fixed-strings '/unitedearthgov/assets/' dist/index.html dist/assets > /dev/null
+          grep -R --fixed-strings './assets/' dist/index.html dist/assets > /dev/null
+          ! grep -R --fixed-strings '/unitedearthgov/' dist/index.html dist/assets > /dev/null
 
       - name: Build and validate runtime image
         run: |
           set -Eeuo pipefail
-          docker build --build-arg VITE_BASE_PATH=/unitedearthgov/ --tag xboard-admin-ci:${GITHUB_SHA} .
+          docker build --build-arg VITE_BASE_PATH=./ --tag xboard-admin-ci:${GITHUB_SHA} .
           docker run --rm xboard-admin-ci:${GITHUB_SHA} nginx -t
           container="xboard-admin-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           docker run --detach --name "${container}" --publish 127.0.0.1:18080:80 xboard-admin-ci:${GITHUB_SHA}
           trap 'docker rm --force "${container}" >/dev/null 2>&1 || true' EXIT
           curl --fail --silent --show-error --retry 12 --retry-all-errors --retry-delay 2 http://127.0.0.1:18080/healthz > /dev/null
           admin_page=$(mktemp)
-          curl --fail --silent --show-error http://127.0.0.1:18080/unitedearthgov > "${admin_page}"
+          curl --fail --silent --show-error http://127.0.0.1:18080/unitedearthgov/ > "${admin_page}"
           grep --fixed-strings '<title>XBoard Admin</title>' "${admin_page}" > /dev/null
           grep --fixed-strings 'data-xboard-admin-shell="standalone"' "${admin_page}" > /dev/null
-          grep --fixed-strings '/unitedearthgov/assets/' "${admin_page}" > /dev/null
-          js_path=$(grep -oE '/unitedearthgov/assets/[^" ]+\.js' "${admin_page}" | head -n 1)
+          grep --fixed-strings './assets/' "${admin_page}" > /dev/null
+          curl --fail --silent --show-error http://127.0.0.1:18080/standalone-admin-smoke/ | grep --fixed-strings 'data-xboard-admin-shell="standalone"' > /dev/null
+          js_path=$(grep -oE '\./assets/[^" ]+\.js' "${admin_page}" | head -n 1 | sed 's#^\./#/#')
           test -n "${js_path}"
-          js_type=$(curl --fail --silent --show-error --output /dev/null --write-out '%{content_type}' "http://127.0.0.1:18080${js_path}")
+          js_type=$(curl --fail --silent --show-error --output /dev/null --write-out '%{content_type}' "http://127.0.0.1:18080/unitedearthgov${js_path}")
           case "${js_type}" in
             application/javascript*|text/javascript*) ;;
             *) echo "Unexpected administrator JavaScript content type" >&2; exit 1 ;;
           esac
-          css_path=$(grep -oE '/unitedearthgov/assets/[^" ]+\.css' "${admin_page}" | head -n 1 || true)
+          css_path=$(grep -oE '\./assets/[^" ]+\.css' "${admin_page}" | head -n 1 | sed 's#^\./#/#' || true)
           if [ -n "${css_path}" ]; then
-            css_type=$(curl --fail --silent --show-error --output /dev/null --write-out '%{content_type}' "http://127.0.0.1:18080${css_path}")
+            css_type=$(curl --fail --silent --show-error --output /dev/null --write-out '%{content_type}' "http://127.0.0.1:18080/unitedearthgov${css_path}")
             case "${css_type}" in
               text/css*) ;;
               *) echo "Unexpected administrator stylesheet content type" >&2; exit 1 ;;
@@ -93,7 +95,7 @@ jobs:
       contents: read
       packages: write
     outputs:
-      digest: ${{ steps.push.outputs.digest }}
+      image_tag: build-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -117,6 +119,7 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
+            type=raw,value=build-${{ github.run_id }}-${{ github.run_attempt }}
             type=sha,format=long,prefix=sha-
             type=ref,event=branch
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
@@ -134,7 +137,115 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            VITE_BASE_PATH=/unitedearthgov/
+            VITE_BASE_PATH=./
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: true
+
+      - name: Report staging image tag
+        env:
+          IMAGE_TAG: build-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          image="${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
+          echo "Published staging image: ${image}"
+          printf 'Staging image: `%s`\n' "${image}" >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-staging:
+    name: Update GJHK standalone admin
+    if: >-
+      startsWith(github.ref, 'refs/heads/') &&
+      (
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'push' && github.ref == 'refs/heads/dev')
+      )
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    concurrency:
+      group: staging-${{ github.repository_id }}
+      cancel-in-progress: false
+    environment:
+      name: staging
+      url: ${{ vars.STAGING_PANEL_URL }}
+    permissions:
+      contents: read
+      packages: read
+    env:
+      SSH_HOST: ${{ vars.STAGING_SSH_HOST }}
+      SSH_PORT: ${{ vars.STAGING_SSH_PORT }}
+      SSH_USER: ${{ vars.STAGING_SSH_USER }}
+      PANEL_URL: ${{ vars.STAGING_PANEL_URL }}
+      SSH_PRIVATE_KEY: ${{ secrets.STAGING_SSH_PRIVATE_KEY }}
+      SSH_KNOWN_HOSTS: ${{ secrets.STAGING_SSH_KNOWN_HOSTS }}
+      GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      ADMIN_IMAGE: ghcr.io/voidintheshell/xboard-admin:${{ needs.build-and-push.outputs.image_tag }}
+      REMOTE_BUNDLE: /home/beihai/docker/.incoming/xboard-admin-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout deployment script
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Validate staging configuration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          : "${SSH_HOST:?STAGING_SSH_HOST is required}"
+          : "${SSH_PORT:?STAGING_SSH_PORT is required}"
+          : "${SSH_USER:?STAGING_SSH_USER is required}"
+          : "${PANEL_URL:?STAGING_PANEL_URL is required}"
+          : "${SSH_PRIVATE_KEY:?STAGING_SSH_PRIVATE_KEY is required}"
+          : "${SSH_KNOWN_HOSTS:?STAGING_SSH_KNOWN_HOSTS is required}"
+          [[ "${ADMIN_IMAGE}" =~ ^ghcr\.io/voidintheshell/xboard-admin:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]
+
+      - name: Prepare SSH
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          SSH_DIR="${RUNNER_TEMP}/deploy-ssh"
+          install -d -m 700 "${SSH_DIR}"
+          printf '%s\n' "${SSH_PRIVATE_KEY}" > "${SSH_DIR}/id_ed25519"
+          printf '%s\n' "${SSH_KNOWN_HOSTS}" > "${SSH_DIR}/known_hosts"
+
+      - name: Upload and deploy standalone admin
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SSH_DIR="${RUNNER_TEMP}/deploy-ssh"
+          SSH_TARGET="${SSH_USER}@${SSH_HOST}"
+          SSH_ARGS=(-i "${SSH_DIR}/id_ed25519" -p "${SSH_PORT}" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=${SSH_DIR}/known_hosts")
+          SCP_ARGS=(-i "${SSH_DIR}/id_ed25519" -P "${SSH_PORT}" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=${SSH_DIR}/known_hosts")
+
+          ssh "${SSH_ARGS[@]}" "${SSH_TARGET}" "install -d -m 700 '${REMOTE_BUNDLE}'"
+          scp "${SCP_ARGS[@]}" deploy/staging/update-admin.sh "${SSH_TARGET}:${REMOTE_BUNDLE}/update-admin.sh"
+          printf '%s\n' "${GHCR_TOKEN}" | ssh "${SSH_ARGS[@]}" "${SSH_TARGET}" "chmod 700 '${REMOTE_BUNDLE}/update-admin.sh' && '${REMOTE_BUNDLE}/update-admin.sh' '${ADMIN_IMAGE}' '${GITHUB_ACTOR}'"
+
+      - name: Verify active public standalone admin when the stack exists
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SSH_DIR="${RUNNER_TEMP}/deploy-ssh"
+          SSH_TARGET="${SSH_USER}@${SSH_HOST}"
+          SSH_ARGS=(-i "${SSH_DIR}/id_ed25519" -p "${SSH_PORT}" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=${SSH_DIR}/known_hosts")
+          stack_present=$(ssh "${SSH_ARGS[@]}" "${SSH_TARGET}" "test -f /home/beihai/docker/xboard/compose.yaml && printf present || true")
+          if [ "${stack_present}" != "present" ]; then
+            echo "Standalone admin image cached; the three-container stack has not been installed yet."
+            exit 0
+          fi
+          active_path=$(ssh "${SSH_ARGS[@]}" "${SSH_TARGET}" "sudo -n docker exec xboard-theme cat /var/run/xboard-admin-route/active-path")
+          [[ "${active_path}" =~ ^[A-Za-z0-9_-]{8,}$ && "${active_path}" != "passport" ]]
+          admin_page=$(mktemp)
+          trap 'rm -f -- "${admin_page}"' EXIT
+          curl --fail --silent --show-error --retry 12 --retry-all-errors --retry-delay 5 "${PANEL_URL}/${active_path}/" > "${admin_page}"
+          grep --fixed-strings '<title>XBoard Admin</title>' "${admin_page}" > /dev/null
+          grep --fixed-strings 'data-xboard-admin-shell="standalone"' "${admin_page}" > /dev/null
+
+      - name: Remove deployment bundle
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          SSH_DIR="${RUNNER_TEMP}/deploy-ssh"
+          if [ -f "${SSH_DIR}/id_ed25519" ] && [ -n "${SSH_HOST:-}" ] && [ -n "${REMOTE_BUNDLE:-}" ]; then
+            ssh -i "${SSH_DIR}/id_ed25519" -p "${SSH_PORT}" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=${SSH_DIR}/known_hosts" "${SSH_USER}@${SSH_HOST}" "case '${REMOTE_BUNDLE}' in /home/beihai/docker/.incoming/xboard-admin-*) rm -rf -- '${REMOTE_BUNDLE}' ;; *) exit 1 ;; esac"
+          fi
+          rm -rf -- "${SSH_DIR}"

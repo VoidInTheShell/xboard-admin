@@ -1,6 +1,6 @@
 import * as React from "react"
 import { useNavigate } from "react-router-dom"
-import { Check, Command as CommandIcon, Languages, LogOut, Moon, Search, Settings, Sun, UserRound } from "lucide-react"
+import { Check, Command as CommandIcon, ExternalLink, Languages, LogOut, Moon, Search, Settings, Sun, UserRound } from "lucide-react"
 import { useTheme } from "next-themes"
 import { flatNavigation } from "@/lib/navigation"
 import { Button } from "@/components/ui/button"
@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { SidebarTrigger } from "@/components/ui/sidebar"
 import { useAuth } from "@/lib/auth"
+import { originalAdminFallbackUrl } from "@/lib/admin-entry"
 
 export function AdminTopbar() {
   const navigate = useNavigate()
@@ -105,6 +106,14 @@ export function AdminTopbar() {
               <DropdownMenuGroup>
                 <DropdownMenuItem><UserRound aria-hidden="true" />个人资料</DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => navigate("/settings")}><Settings aria-hidden="true" />系统配置</DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuItem asChild>
+                  <a href={originalAdminFallbackUrl()} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink aria-hidden="true" />打开原版管理面板
+                  </a>
+                </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>

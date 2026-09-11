@@ -4,9 +4,10 @@ import { BrowserRouter } from 'react-router-dom'
 import { ThemeProvider } from '@/components/theme-provider'
 import { App } from '@/app'
 import { AuthProvider } from '@/lib/auth'
+import { adminRouterBase } from '@/lib/admin-entry'
 import './index.css'
 
-const routerBase = import.meta.env.BASE_URL === '/' ? '/' : import.meta.env.BASE_URL.replace(/\/+$/, '')
+const routerBase = adminRouterBase()
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

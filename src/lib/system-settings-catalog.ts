@@ -55,7 +55,7 @@ export const systemSettingsCatalog: CatalogTab[] = [
           setting("safe", "email_verify", { label: "邮箱验证", control: "switch" }),
           setting("safe", "email_gmail_limit_enable", { label: "禁止 Gmail 多别名", control: "switch" }),
           setting("safe", "safe_mode_enable", { label: "安全模式", control: "switch" }),
-          setting("safe", "secure_path", { label: "后台路径", control: "text", required: true, defaultValue: "unitedearthgov", description: "至少 8 个字符，仅允许字母、数字、下划线和连字符。保存后需要同步更新本管理端的 VITE_ADMIN_API_PATH。" }),
+          setting("safe", "secure_path", { label: "后台路径", control: "text", required: true, defaultValue: "unitedearthgov", description: "至少 8 个字符，仅允许字母、数字、下划线和连字符。保存后会自动切换到新的 Xboard Admin 入口；原版面板仅保留为账户菜单中的兼容回退入口。" }),
           setting("safe", "email_whitelist_enable", { label: "邮箱后缀白名单", control: "switch" }),
           setting("safe", "email_whitelist_suffix", { label: "允许的邮箱后缀", control: "tags", valueType: "string-array", placeholder: "example.com, example.org", span: 2, showWhen: { field: "safe.email_whitelist_enable", equals: true } }),
         ],

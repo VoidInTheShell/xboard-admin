@@ -28,11 +28,7 @@ export class ApiError extends Error {
 }
 
 const apiOrigin = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/+$/, "")
-const configuredAdminPath = (import.meta.env.VITE_ADMIN_API_PATH ?? "unitedearthgov")
-  .trim()
-  .replace(/^\/+|\/+$/g, "")
-
-export const adminApiPath = configuredAdminPath || "unitedearthgov"
+export const adminApiPath = activeAdminPath()
 export const adminApiBase = `/api/v2/${adminApiPath}`
 
 export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
@@ -253,3 +249,4 @@ function extractFieldErrors(payload: unknown): Record<string, string[]> {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
 }
+import { activeAdminPath } from "@/lib/admin-entry"

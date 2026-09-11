@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { ApiError } from "@/lib/api"
+import { standaloneAdminUrl, waitForStandaloneAdmin } from "@/lib/admin-entry"
 import { useAdminApi } from "@/lib/auth"
 import {
   createConfigPayload,
@@ -94,7 +95,17 @@ export function SettingsPage() {
       const securePathChanged = Object.hasOwn(payload, "secure_path")
       if (securePathChanged) {
         setBaseline(values)
-        toast.success("后台路径已保存。请同步更新 VITE_ADMIN_API_PATH 后重新登录。")
+        const nextPath = String(payload.secure_path ?? "").trim()
+        const toastId = toast.loading("后台路径已保存，正在切换到新的 Xboard Admin 入口…")
+        const standaloneReady = await waitForStandaloneAdmin(nextPath)
+
+        if (standaloneReady) {
+          toast.success("独立 Xboard Admin 已就绪，正在进入新入口。", { id: toastId })
+          window.location.assign(standaloneAdminUrl(nextPath))
+          return
+        }
+
+        toast.error("后台路径已保存，但独立管理端尚未切换完成。请稍候从新入口重试；不会自动回退到原版面板。", { id: toastId })
       } else {
         toast.success(`已保存 ${dirtyCount} 项配置，正在重新读取确认。`)
         setReloadVersion((current) => current + 1)
