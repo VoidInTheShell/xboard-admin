@@ -1,6 +1,14 @@
 import * as React from "react"
-import { Link, useLocation } from "react-router-dom"
-import { ChevronRight, Network, PanelLeftClose, PanelLeftOpen } from "lucide-react"
+import { Link, useLocation, useNavigate } from "react-router-dom"
+import {
+  ChevronRight,
+  ExternalLink,
+  LogOut,
+  Network,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Settings,
+} from "lucide-react"
 import { adminNavigation } from "@/lib/navigation"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import {
@@ -19,8 +27,19 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { Badge } from "@/components/ui/badge"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Button } from "@/components/ui/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { originalAdminFallbackUrl } from "@/lib/admin-entry"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/lib/auth"
 
@@ -31,11 +50,13 @@ function isPathActive(pathname: string, path: string) {
 
 export function AdminSidebar() {
   const { pathname } = useLocation()
+  const navigate = useNavigate()
   const { state, isMobile } = useSidebar()
   const collapsed = !isMobile && state === "collapsed"
   const collapseLabel = isMobile ? "关闭侧栏" : "收起侧栏"
   const [openGroups, setOpenGroups] = React.useState<Record<string, { pathname: string; open: boolean }>>({})
-  const { session } = useAuth()
+  const { logout, session } = useAuth()
+  const accountName = session?.email || "管理员"
 
   return (
     <Sidebar collapsible="icon" variant="inset">
@@ -242,14 +263,55 @@ export function AdminSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border p-2">
-        <div className="flex items-center gap-2 rounded-md px-2 py-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0" title={session?.email || "管理员"}>
-          <span className="relative flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary text-xs font-semibold">{session?.email.slice(0, 1).toUpperCase() || "管"}</span>
-          <span className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
-            <span className="block truncate text-sm font-medium">{session?.email || "管理员"}</span>
-            <span className="block truncate text-xs text-muted-foreground">XBoard 管理员</span>
-          </span>
-          <Badge variant="outline" className="group-data-[collapsible=icon]:hidden">API</Badge>
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              title={accountName}
+              aria-label={`打开 ${accountName} 的账户菜单`}
+              className="w-full justify-start gap-2 rounded-xl px-2 group-data-[collapsible=icon]:size-10 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
+            >
+              <Avatar>
+                <AvatarFallback className="bg-primary text-xs font-semibold text-primary-foreground">
+                  {accountName.slice(0, 1).toUpperCase() || "管"}
+                </AvatarFallback>
+              </Avatar>
+              <span className="min-w-0 flex-1 truncate text-left text-sm group-data-[collapsible=icon]:hidden">
+                {accountName}
+              </span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="right" align="end" sideOffset={8} className="w-56">
+            <DropdownMenuLabel>
+              <span className="block truncate text-sm" title={accountName}>
+                {accountName}
+              </span>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem onSelect={() => navigate("/settings")}>
+                <Settings aria-hidden="true" />
+                系统配置
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem asChild>
+                <a href={originalAdminFallbackUrl()} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink aria-hidden="true" />
+                  打开原版管理面板
+                </a>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem variant="destructive" onSelect={logout}>
+                <LogOut aria-hidden="true" />
+                退出登录
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

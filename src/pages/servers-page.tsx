@@ -7,11 +7,14 @@ import {
   Cpu,
   HardDrive,
   Layers3,
+  MoreHorizontal,
+  Pencil,
   Plus,
   Power,
   PowerOff,
   RefreshCw,
   Server,
+  TerminalSquare,
   Trash2,
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -36,6 +39,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Field,
   FieldGroup,
@@ -503,40 +514,49 @@ export function ServersPage() {
                       </TableCell>
                     ) : null}
                     <TableCell className="text-right lg:sticky lg:right-0 lg:z-10 lg:bg-card">
-                      <ButtonGroup
-                        aria-label={`${machine.name} 操作`}
-                        className="ml-auto [&>button]:px-2 [&>a]:px-2"
-                      >
+                      <ButtonGroup aria-label={`${machine.name} 操作`} className="ml-auto">
                         <Button variant="outline" size="sm" asChild>
                           <Link to={'/servers/' + machine.id + '/inbounds'}>
                             配置
                             <ArrowRight data-icon="inline-end" />
                           </Link>
                         </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={pageBusy}
-                          onClick={() => setEdit(machine)}
-                        >
-                          编辑
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={pageBusy}
-                          onClick={() => void showInstallCommand(machine)}
-                        >
-                          安装
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={pageBusy}
-                          onClick={() => setRemove(machine)}
-                        >
-                          移除
-                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="icon-sm"
+                              disabled={pageBusy}
+                              aria-label={`${machine.name} 更多操作`}
+                            >
+                              <MoreHorizontal aria-hidden="true" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-40">
+                            <DropdownMenuGroup>
+                              <DropdownMenuItem onSelect={() => setEdit(machine)}>
+                                <Pencil aria-hidden="true" />
+                                编辑
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onSelect={() => void showInstallCommand(machine)}
+                              >
+                                <TerminalSquare aria-hidden="true" />
+                                安装
+                              </DropdownMenuItem>
+                            </DropdownMenuGroup>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuGroup>
+                              <DropdownMenuItem
+                                variant="destructive"
+                                onSelect={() => setRemove(machine)}
+                              >
+                                <Trash2 aria-hidden="true" />
+                                移除
+                              </DropdownMenuItem>
+                            </DropdownMenuGroup>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </ButtonGroup>
                     </TableCell>
                   </TableRow>

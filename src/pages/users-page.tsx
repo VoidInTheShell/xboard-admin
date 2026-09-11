@@ -479,21 +479,33 @@ export function UsersPage() {
   }
 
   async function generateUsers() {
+    const count = Number(generateForm.count)
+    if (count === 1 && !generateForm.emailPrefix.trim()) {
+      toast.error('添加单个用户时请填写邮箱前缀。')
+      return
+    }
     setGenerating(true)
     try {
-      const count = Number(generateForm.count)
-      const file = await api.download('user/generate', {
+      const payload = {
         email_prefix: generateForm.emailPrefix.trim() || null,
         email_suffix: generateForm.emailSuffix.trim(),
-        generate_count: count,
         password: generateForm.password || null,
         plan_id:
           generateForm.planId === 'none' ? null : Number(generateForm.planId),
         expired_at: localToEpoch(generateForm.expiredAt),
-        download_csv: true,
-      })
-      saveBlob(file.blob, file.filename)
-      toast.success(`已生成 ${count} 个用户，敏感凭据已下载为 CSV`)
+      }
+      if (count === 1) {
+        await api.post<boolean>('user/generate', payload)
+        toast.success('已添加用户')
+      } else {
+        const file = await api.download('user/generate', {
+          ...payload,
+          generate_count: count,
+          download_csv: true,
+        })
+        saveBlob(file.blob, file.filename)
+        toast.success(`已生成 ${count} 个用户，敏感凭据已下载为 CSV`)
+      }
       setGenerateOpen(false)
       setGenerateForm(emptyGenerateForm())
       query.reload()
@@ -597,16 +609,17 @@ export function UsersPage() {
       : scope === 'filtered'
         ? `当前筛选结果（${query.data?.users.total ?? 0} 个）`
         : `全部用户（${query.data?.users.total ?? 0} 个）`
+  const isBatchGenerate = Number(generateForm.count) > 1
 
   return (
     <div className="mx-auto w-full max-w-[1600px]">
       <PageHeader
         title="用户管理"
-        description="维护用户订阅、配额、余额与角色。Token、UUID、订阅地址和生成密码不会显示在页面或日志中。"
+        description="维护用户订阅、配额、余额与角色。Token、UUID、订阅地址和初始密码不会显示在页面或日志中。"
         action={
           <Button onClick={() => setGenerateOpen(true)}>
             <Plus data-icon="inline-start" aria-hidden="true" />
-            生成用户
+            添加用户
           </Button>
         }
       />
@@ -799,7 +812,7 @@ export function UsersPage() {
               ) : (
                 <Button size="sm" onClick={() => setGenerateOpen(true)}>
                   <Plus data-icon="inline-start" aria-hidden="true" />
-                  生成用户
+                  添加用户
                 </Button>
               )
             }
@@ -843,28 +856,38 @@ export function UsersPage() {
       >
         <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>批量生成用户</DialogTitle>
+            <DialogTitle>{isBatchGenerate ? '批量生成用户' : '添加用户'}</DialogTitle>
             <DialogDescription>
-              生成后立即下载一次性敏感 CSV，其中包含账号、密码、UUID
-              和订阅地址。页面不会展示或保留这些值。
+              {isBatchGenerate
+                ? '生成后立即下载一次性敏感 CSV，其中包含账号、密码、UUID 和订阅地址。页面不会展示或保留这些值。'
+                : '添加后不会在页面展示或保留密码、UUID 和订阅地址。'}
             </DialogDescription>
           </DialogHeader>
-          <Alert>
-            <ShieldAlert aria-hidden="true" />
-            <AlertTitle>敏感文件</AlertTitle>
-            <AlertDescription>
-              请只在受控设备上生成，下载后转移到安全位置；相同邮箱前缀会自动追加
-              _1、_2 等序号。
-            </AlertDescription>
-          </Alert>
+          {isBatchGenerate ? (
+            <Alert>
+              <ShieldAlert aria-hidden="true" />
+              <AlertTitle>敏感文件</AlertTitle>
+              <AlertDescription>
+                请只在受控设备上生成，下载后转移到安全位置；相同邮箱前缀会自动追加
+                _1、_2 等序号。
+              </AlertDescription>
+            </Alert>
+          ) : null}
           <FieldGroup>
             <div className="grid gap-4 sm:grid-cols-[1fr_auto_1fr]">
               <Field>
-                <FieldLabel htmlFor="generate-prefix">邮箱前缀</FieldLabel>
+                <FieldLabel htmlFor="generate-prefix">
+                  邮箱前缀
+                  {!isBatchGenerate ? (
+                    <span aria-hidden="true" className="text-destructive">
+                      *
+                    </span>
+                  ) : null}
+                </FieldLabel>
                 <Input
                   id="generate-prefix"
                   value={generateForm.emailPrefix}
-                  placeholder="trial"
+                  placeholder={isBatchGenerate ? 'trial（可留空）' : 'trial'}
                   onChange={(event) =>
                     setGenerateForm({
                       ...generateForm,
@@ -872,6 +895,11 @@ export function UsersPage() {
                     })
                   }
                 />
+                <FieldDescription>
+                  {isBatchGenerate
+                    ? '留空时后端会随机生成邮箱前缀；填写后自动追加 _1、_2 等序号。'
+                    : '与邮箱域名组成完整邮箱。'}
+                </FieldDescription>
               </Field>
               <span className="hidden self-end pb-2 text-muted-foreground sm:block">
                 @
@@ -963,7 +991,9 @@ export function UsersPage() {
                 }
               />
               <FieldDescription>
-                建议填写至少 8 位随机密码，并通过安全渠道传递 CSV。
+                {isBatchGenerate
+                  ? '建议填写至少 8 位随机密码，并通过安全渠道传递 CSV。'
+                  : '留空时后端使用该邮箱作为初始密码；创建成功后不会显示或保留密码。'}
               </FieldDescription>
             </Field>
           </FieldGroup>
@@ -981,6 +1011,7 @@ export function UsersPage() {
                 !generateForm.emailSuffix.trim() ||
                 Number(generateForm.count) < 1 ||
                 Number(generateForm.count) > 500 ||
+                (!isBatchGenerate && !generateForm.emailPrefix.trim()) ||
                 Boolean(
                   generateForm.password && generateForm.password.length < 8,
                 )
@@ -993,10 +1024,18 @@ export function UsersPage() {
                   data-icon="inline-start"
                   aria-hidden="true"
                 />
-              ) : (
+              ) : isBatchGenerate ? (
                 <Download data-icon="inline-start" aria-hidden="true" />
+              ) : (
+                <Plus data-icon="inline-start" aria-hidden="true" />
               )}
-              {generating ? '生成中' : '生成并下载 CSV'}
+              {generating
+                ? isBatchGenerate
+                  ? '生成并下载中'
+                  : '生成中'
+                : isBatchGenerate
+                  ? '生成并下载 CSV'
+                  : '生成'}
             </Button>
           </DialogFooter>
         </DialogContent>

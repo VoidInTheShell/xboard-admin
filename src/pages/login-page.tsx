@@ -1,16 +1,23 @@
 import * as React from "react"
-import { AlertCircle, ArrowRight, KeyRound, Network, ShieldCheck } from "lucide-react"
+import { AlertCircle, ArrowRight, Network } from "lucide-react"
 import { Navigate, useLocation, useNavigate } from "react-router-dom"
 import { useAuth } from "@/lib/auth"
-import { adminApiPath, ApiError } from "@/lib/api"
+import { ApiError } from "@/lib/api"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field"
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 
 type LoginLocationState = { from?: { pathname?: string } }
+const welcomeMessage = "欢迎使用UEG-NET管理面板"
+
+function prefersReducedMotion() {
+  return (
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  )
+}
 
 export function LoginPage() {
   const { login, session } = useAuth()
@@ -20,6 +27,42 @@ export function LoginPage() {
   const [password, setPassword] = React.useState("")
   const [error, setError] = React.useState("")
   const [submitting, setSubmitting] = React.useState(false)
+  const [welcomeText, setWelcomeText] = React.useState(() =>
+    prefersReducedMotion() ? welcomeMessage : "",
+  )
+  const [typingWelcome, setTypingWelcome] = React.useState(
+    () => !prefersReducedMotion(),
+  )
+
+  React.useEffect(() => {
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)")
+    if (reducedMotion.matches) return
+
+    let characterIndex = 0
+    let timer: number | undefined
+    const showNextCharacter = () => {
+      characterIndex += 1
+      setWelcomeText(welcomeMessage.slice(0, characterIndex))
+      if (characterIndex >= welcomeMessage.length) {
+        setTypingWelcome(false)
+        return
+      }
+      timer = window.setTimeout(showNextCharacter, 75)
+    }
+    const showCompleteMessage = (event: MediaQueryListEvent) => {
+      if (!event.matches) return
+      if (timer) window.clearTimeout(timer)
+      setWelcomeText(welcomeMessage)
+      setTypingWelcome(false)
+    }
+
+    timer = window.setTimeout(showNextCharacter, 75)
+    reducedMotion.addEventListener("change", showCompleteMessage)
+    return () => {
+      if (timer) window.clearTimeout(timer)
+      reducedMotion.removeEventListener("change", showCompleteMessage)
+    }
+  }, [])
 
   if (session) return <Navigate to="/dashboard" replace />
 
@@ -41,7 +84,7 @@ export function LoginPage() {
 
   return (
     <main className="grid min-h-dvh bg-background lg:grid-cols-[minmax(0,0.9fr)_minmax(440px,0.7fr)]">
-      <section className="flex min-h-[240px] flex-col justify-between border-b bg-muted/30 p-5 sm:min-h-[320px] sm:p-6 lg:min-h-dvh lg:border-r lg:border-b-0 lg:p-10">
+      <section className="flex min-h-[240px] flex-col border-b bg-muted/30 p-5 sm:min-h-[320px] sm:p-6 lg:min-h-dvh lg:border-r lg:border-b-0 lg:p-10">
         <div className="flex items-center gap-3">
           <span className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
             <Network aria-hidden="true" />
@@ -52,23 +95,19 @@ export function LoginPage() {
           </div>
         </div>
 
-        <div className="max-w-xl py-6 sm:py-10">
-          <Badge variant="outline" className="mb-4">真实管理 API</Badge>
-          <h1 className="max-w-lg text-3xl font-semibold tracking-tight sm:text-4xl">从同一控制面管理用户、订单、内容与运行设置。</h1>
-          <p className="mt-4 max-w-lg text-sm leading-7 text-muted-foreground">
-            登录后只展示后端实际返回的数据。权限失败、空数据和接口异常会分别呈现，不再用本地示例记录代替。
-          </p>
-        </div>
-
-        <div className="hidden gap-3 text-sm sm:grid sm:grid-cols-2">
-          <div className="flex gap-3 rounded-xl border bg-background/70 p-3">
-            <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-            <div><div className="font-medium">Sanctum 管理权限</div><div className="mt-1 text-xs leading-5 text-muted-foreground">使用后端签发的 Bearer 会话，不保存账号密码。</div></div>
-          </div>
-          <div className="flex gap-3 rounded-xl border bg-background/70 p-3">
-            <KeyRound className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-            <div><div className="font-medium">可配置安全路径</div><div className="mt-1 font-data text-xs leading-5 text-muted-foreground">/api/v2/{adminApiPath}</div></div>
-          </div>
+        <div className="flex flex-1 items-center py-6 sm:py-10">
+          <h1
+            aria-label={welcomeMessage}
+            className="max-w-lg text-2xl font-semibold tracking-tight sm:text-[28px]"
+          >
+            <span aria-hidden="true">{welcomeText}</span>
+            {typingWelcome ? (
+              <span
+                aria-hidden="true"
+                className="ml-1 inline-block h-[0.9em] w-px animate-pulse bg-current align-[-0.08em] motion-reduce:hidden"
+              />
+            ) : null}
+          </h1>
         </div>
       </section>
 
@@ -77,7 +116,6 @@ export function LoginPage() {
           <form onSubmit={submit}>
             <CardHeader>
               <CardTitle>管理员登录</CardTitle>
-              <CardDescription>使用测试 XBoard 后端中的管理员账号。</CardDescription>
             </CardHeader>
             <CardContent>
               <FieldGroup>
@@ -99,7 +137,6 @@ export function LoginPage() {
                     aria-invalid={Boolean(error) || undefined}
                     required
                   />
-                  <FieldDescription>账号仅用于向当前配置的 XBoard 后端发起登录。</FieldDescription>
                 </Field>
                 <Field data-invalid={Boolean(error) || undefined}>
                   <FieldLabel htmlFor="admin-password">密码</FieldLabel>
@@ -115,12 +152,11 @@ export function LoginPage() {
                 </Field>
               </FieldGroup>
             </CardContent>
-            <CardFooter className="mt-6 flex-col items-stretch gap-3">
+            <CardFooter className="mt-6 flex-col items-stretch">
               <Button type="submit" disabled={submitting || !email.trim() || !password}>
                 {submitting ? "正在验证…" : "登录管理后台"}
                 {!submitting ? <ArrowRight data-icon="inline-end" aria-hidden="true" /> : null}
               </Button>
-              <p className="text-center text-xs leading-5 text-muted-foreground">会话仅保存在当前浏览器标签会话中；退出后立即清除。</p>
             </CardFooter>
           </form>
         </Card>
