@@ -152,6 +152,17 @@ function describeRuleConditions(rule: JsonObject) {
   )
 }
 
+function hasRuleMatch(rule: JsonObject) {
+  return Object.entries(rule).some(([key, value]) => {
+    if (['type', 'outboundTag', 'balancerTag', 'enabled', 'ruleTag', 'webhook'].includes(key))
+      return false
+    if (typeof value === 'string') return value.trim() !== ''
+    if (Array.isArray(value)) return value.length > 0
+    if (value && typeof value === 'object') return Object.keys(value).length > 0
+    return value !== null && value !== undefined
+  })
+}
+
 type Editor = {
   kind: 'rule' | 'raw' | 'defaults' | 'independent-inbound'
   index?: number
@@ -452,6 +463,8 @@ export function ServerWorkspacePage() {
       )
       return
     }
+    if (!hasRuleMatch(value))
+      throw new Error('请至少配置一个匹配条件；未命中流量由默认出站处理。')
     const list = [...rules]
     if (editor.index === undefined) list.push(value)
     else list[editor.index] = value
