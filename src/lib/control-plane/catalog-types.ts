@@ -51,5 +51,7 @@ export type CatalogTab = {
   id: string
   title: string
   description?: string
+  icon?: LucideIcon
   sections: CatalogSection[]
 }
+import type { LucideIcon } from 'lucide-react'

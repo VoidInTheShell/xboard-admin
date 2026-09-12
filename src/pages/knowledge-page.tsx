@@ -68,7 +68,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Textarea } from '@/components/ui/textarea'
+import { MarkdownEditor } from '@/components/ui/markdown-editor'
 import { ApiError } from '@/lib/api'
 import { useAdminApi } from '@/lib/auth'
 import { getErrorMessage, useAdminQuery } from '@/hooks/use-admin-query'
@@ -598,17 +598,14 @@ export function KnowledgePage() {
                     *
                   </span>
                 </FieldLabel>
-                <Textarea
+                <MarkdownEditor
                   id="knowledge-body"
-                  rows={16}
                   value={form.body}
-                  aria-invalid={Boolean(formErrors.body)}
-                  onChange={(event) =>
-                    setForm({ ...form, body: event.target.value })
-                  }
+                  invalid={Boolean(formErrors.body)}
+                  onValueChange={(body) => setForm({ ...form, body })}
                 />
                 <FieldDescription>
-                  保留正文格式，用户端会按当前页面样式展示。
+                  使用 Markdown 编写标题、列表、链接、引用和代码；用户端会按 Markdown 样式展示。
                 </FieldDescription>
                 <FieldError
                   errors={formErrors.body?.map((message) => ({ message }))}

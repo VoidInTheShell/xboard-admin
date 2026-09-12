@@ -1,3 +1,4 @@
+import { FileCode2 } from 'lucide-react'
 import type { CatalogTab } from "@/lib/control-plane/catalog-types"
 
 const templateClients = [
@@ -12,6 +13,7 @@ const templateClients = [
 export const subscriptionTemplateCatalog: CatalogTab[] = templateClients.map((client) => ({
   id: client.id,
   title: client.title,
+  icon: FileCode2,
   description: `维护 ${client.title} 客户端使用的订阅模板。`,
   sections: [
     {
