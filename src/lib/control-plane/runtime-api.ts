@@ -86,6 +86,7 @@ export type XrayResource = {
   client_settings?: JsonObject
   config_revision: number
   config_hash: string
+  default_outbound_tag: string
   application: JsonObject | null
   outbound_bindings: OutboundBinding[] | null
 }

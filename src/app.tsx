@@ -89,6 +89,7 @@ export function App() {
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="dashboard" element={<DashboardPage />} />
               <Route path="servers" element={<ServersPage />} />
+              <Route path="servers/:serverId/outbounds" element={<Navigate to="/outbounds" replace />} />
               <Route path="servers/:serverId/:section" element={<ServerWorkspacePage />} />
               <Route path="outbounds" element={<OutboundsPage />} />
               <Route path="nodes" element={<NodesPage />} />
