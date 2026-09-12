@@ -33,7 +33,11 @@ export function SubscriptionManagementPage() {
       setFieldErrors({})
       try {
         const groups = await api.get<ConfigGroups>("config/fetch", { key: "subscribe_template" }, controller.signal)
-        const nextValues = createConfigValues(subscriptionTemplateCatalog, groups)
+        const templateGroup = groups.subscribe_template ?? {}
+        const clientGroups = Object.fromEntries(
+          subscriptionTemplateCatalog.map((tab) => [tab.id, templateGroup]),
+        )
+        const nextValues = createConfigValues(subscriptionTemplateCatalog, clientGroups)
         setValues(nextValues)
         setBaseline(nextValues)
       } catch (error) {
