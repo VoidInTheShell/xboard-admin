@@ -44,7 +44,7 @@ jobs:
 
       - name: Build standalone administrator assets
         env:
-          VITE_BASE_PATH: ./
+          VITE_BASE_PATH: /unitedearthgov/
         run: npm run build
 
       - name: Validate administrator asset base
@@ -52,13 +52,13 @@ jobs:
           set -Eeuo pipefail
           grep --fixed-strings '<title>XBoard Admin</title>' dist/index.html > /dev/null
           grep --fixed-strings 'data-xboard-admin-shell="standalone"' dist/index.html > /dev/null
-          grep -R --fixed-strings './assets/' dist/index.html dist/assets > /dev/null
-          ! grep -R --fixed-strings '/unitedearthgov/' dist/index.html dist/assets > /dev/null
+          grep --fixed-strings '/unitedearthgov/assets/' dist/index.html > /dev/null
+          ! grep --fixed-strings './assets/' dist/index.html > /dev/null
 
       - name: Build and validate runtime image
         run: |
           set -Eeuo pipefail
-          docker build --build-arg VITE_BASE_PATH=./ --tag xboard-admin-ci:${GITHUB_SHA} .
+          docker build --build-arg VITE_BASE_PATH=/unitedearthgov/ --tag xboard-admin-ci:${GITHUB_SHA} .
           docker run --rm xboard-admin-ci:${GITHUB_SHA} nginx -t
           container="xboard-admin-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           docker run --detach --name "${container}" --publish 127.0.0.1:18080:80 xboard-admin-ci:${GITHUB_SHA}
@@ -68,11 +68,15 @@ jobs:
           curl --fail --silent --show-error http://127.0.0.1:18080/unitedearthgov/ > "${admin_page}"
           grep --fixed-strings '<title>XBoard Admin</title>' "${admin_page}" > /dev/null
           grep --fixed-strings 'data-xboard-admin-shell="standalone"' "${admin_page}" > /dev/null
-          grep --fixed-strings './assets/' "${admin_page}" > /dev/null
+          grep --fixed-strings '/unitedearthgov/assets/' "${admin_page}" > /dev/null
           curl --fail --silent --show-error http://127.0.0.1:18080/standalone-admin-smoke/ | grep --fixed-strings 'data-xboard-admin-shell="standalone"' > /dev/null
-          js_path=$(grep -oE '\./assets/[^" ]+\.js' "${admin_page}" | head -n 1 | sed 's#^\./#/#')
+          deep_page=$(mktemp)
+          curl --fail --silent --show-error 'http://127.0.0.1:18080/unitedearthgov/servers/1/routing?instance=1' > "${deep_page}"
+          grep --fixed-strings '<title>XBoard Admin</title>' "${deep_page}" > /dev/null
+          grep --fixed-strings '/unitedearthgov/assets/' "${deep_page}" > /dev/null
+          js_path=$(grep -oE '/unitedearthgov/assets/[^" ]+\.js' "${admin_page}" | head -n 1)
           test -n "${js_path}"
-          js_type=$(curl --fail --silent --show-error --output /dev/null --write-out '%{content_type}' "http://127.0.0.1:18080/unitedearthgov${js_path}")
+          js_type=$(curl --fail --silent --show-error --output /dev/null --write-out '%{content_type}' "http://127.0.0.1:18080${js_path}")
           case "${js_type}" in
             application/javascript*|text/javascript*) ;;
             *) echo "Unexpected administrator JavaScript content type" >&2; exit 1 ;;
@@ -137,7 +141,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            VITE_BASE_PATH=./
+            VITE_BASE_PATH=/unitedearthgov/
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: true

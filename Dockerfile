@@ -7,7 +7,7 @@ RUN npm ci
 
 COPY . .
 
-ARG VITE_BASE_PATH=./
+ARG VITE_BASE_PATH=/unitedearthgov/
 ENV VITE_BASE_PATH=${VITE_BASE_PATH}
 
 RUN npm run build
