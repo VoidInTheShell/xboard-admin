@@ -467,12 +467,19 @@ export function ServerWorkspacePage() {
       Number(applied.desired_revision) === snapshot?.config_revision,
   )
   const machine = query.data?.machine
-  const handledFailure = React.useRef('')
+  const handledFailure = React.useRef<string | undefined>(undefined)
   React.useEffect(() => {
-    if (!failed || !node || !applied) return
+    if (!node || !applied) return
     const path = String(applied.error_path ?? '').replace(/\[(\d+)\]/g, '.$1')
-    const marker = `${node.id}:${applied.desired_revision}:${path}`
-    if (handledFailure.current === marker) return
+    const marker = `${node.id}:${applied.status}:${applied.desired_revision}:${path}`
+    if (handledFailure.current === undefined) {
+      handledFailure.current = marker
+      return
+    }
+    if (!failed || handledFailure.current === marker) {
+      handledFailure.current = marker
+      return
+    }
     handledFailure.current = marker
     const inbound = path.match(/^xray_config\.inbounds\.(\d+)/)
     const outbound = path.match(/^xray_config\.outbounds\.(\d+)/)
@@ -500,8 +507,8 @@ export function ServerWorkspacePage() {
         setEditor({ kind: 'rule', index, value: rules[index] })
     })
     return () => window.clearTimeout(timer)
-    // This effect is keyed by the immutable failure receipt. The list
-    // projections come from the same render and only identify its target row.
+    // Ignore the receipt already present when the workspace mounts. A later
+    // immutable failure receipt can still focus the field that just failed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [applied, failed, machineId, navigate, node?.id])
   const runtimeIssues = failed ? applicationFieldErrors(applied) : undefined
