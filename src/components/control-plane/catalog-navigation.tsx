@@ -8,10 +8,18 @@ export function CatalogNavigation({
   items,
   label,
   stickyScope = "page",
+  appearance = "steps",
 }: {
-  items: { id: string; title: string; icon?: LucideIcon; hasError?: boolean }[];
+  items: {
+    id: string;
+    title: string;
+    description?: string;
+    icon?: LucideIcon;
+    hasError?: boolean;
+  }[];
   label: string;
   stickyScope?: "page" | "container";
+  appearance?: "steps" | "cards";
 }) {
   return (
     <aside
@@ -19,6 +27,8 @@ export function CatalogNavigation({
       aria-label={label}
       className={cn(
         "max-w-full self-start overflow-hidden rounded-2xl border bg-background/95 p-2 shadow-sm backdrop-blur lg:sticky lg:z-20 lg:overflow-y-auto lg:overscroll-contain lg:[scrollbar-gutter:stable]",
+        appearance === "cards" &&
+          "bg-card shadow-none backdrop-blur-none lg:[scrollbar-gutter:auto]",
         stickyScope === "page"
           ? "lg:top-16 lg:max-h-[calc(100dvh-5rem)]"
           : "lg:top-0 lg:max-h-[calc(92dvh-12rem)]",
@@ -37,16 +47,42 @@ export function CatalogNavigation({
             <TabsTrigger
               key={item.id}
               value={item.id}
-              className="group/catalog-step min-h-11 max-lg:!w-auto max-lg:!min-w-36 flex-none justify-start rounded-xl border border-transparent px-2.5 py-2 text-left shadow-none after:hidden hover:-translate-y-px hover:bg-background/75 hover:shadow-sm active:translate-y-0 active:scale-[0.98] data-[state=active]:border-border data-[state=active]:bg-background data-[state=active]:shadow-sm lg:w-full lg:min-w-0"
+              className={cn(
+                "group/catalog-step min-h-11 max-lg:!w-auto max-lg:!min-w-36 flex-none justify-start rounded-xl border border-transparent px-2.5 py-2 text-left shadow-none after:hidden hover:-translate-y-px hover:bg-background/75 hover:shadow-sm active:translate-y-0 active:scale-[0.98] data-[state=active]:border-border data-[state=active]:bg-background data-[state=active]:shadow-sm lg:w-full lg:min-w-0",
+                appearance === "cards" &&
+                  "min-h-16 gap-3 whitespace-normal text-foreground",
+              )}
             >
-              <span className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-background font-data text-[10px] font-semibold text-muted-foreground transition-colors duration-200 group-data-[state=active]/catalog-step:bg-primary group-data-[state=active]/catalog-step:text-primary-foreground">
+              <span
+                className={cn(
+                  "flex size-6 shrink-0 items-center justify-center rounded-lg bg-background font-data text-[10px] font-semibold text-muted-foreground transition-colors duration-200 group-data-[state=active]/catalog-step:bg-primary group-data-[state=active]/catalog-step:text-primary-foreground",
+                  appearance === "cards" && "size-8 rounded-xl bg-muted",
+                )}
+              >
                 {Icon ? (
                   <Icon className="size-4" aria-hidden="true" />
                 ) : (
                   String(index + 1).padStart(2, "0")
                 )}
               </span>
-              <span className="min-w-0 truncate">{item.title}</span>
+              {appearance === "cards" ? (
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">{item.title}</span>
+                  {item.description && (
+                    <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+                      {item.description}
+                    </span>
+                  )}
+                </span>
+              ) : (
+                <span className="min-w-0 truncate">{item.title}</span>
+              )}
+              {appearance === "cards" && !item.hasError && (
+                <span
+                  aria-hidden="true"
+                  className="size-1.5 shrink-0 rounded-full bg-muted-foreground/30 group-data-[state=active]/catalog-step:bg-primary"
+                />
+              )}
               {item.hasError && (
                 <CircleAlert
                   className="ml-auto size-4 shrink-0 text-destructive"

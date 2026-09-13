@@ -27,7 +27,7 @@ type Filters = { userId: string; email: string; resetType: string; source: strin
 
 const emptyFilters: Filters = { userId: "", email: "", resetType: "all", source: "all", startDate: "", endDate: "" }
 
-export function TrafficResetLogsPage() {
+export function TrafficResetLogsPage({ embedded = false }: { embedded?: boolean }) {
   const api = useAdminApi()
   const [searchParams] = useSearchParams()
   const routeUserId = searchParams.get("user_id")?.trim() ?? ""
@@ -92,7 +92,7 @@ export function TrafficResetLogsPage() {
 
   return (
     <div className="mx-auto w-full max-w-[1600px]">
-      <PageHeader title="流量重置日志" description="审计自动、定时、API 与手动重置；手动重置需要用户 ID、原因和二次确认。" action={<div className="flex gap-2"><Button variant="outline" disabled={resetQuery.refreshing} onClick={resetQuery.reload}><RefreshCw className={resetQuery.refreshing ? "animate-spin motion-reduce:animate-none" : undefined} data-icon="inline-start" aria-hidden="true" />刷新</Button><Button onClick={() => { setResetErrors({}); setResetOpen(true) }}><RotateCcw data-icon="inline-start" aria-hidden="true" />手动重置</Button></div>} />
+      <PageHeader embedded={embedded} title="流量重置日志" description="审计自动、定时、API 与手动重置；手动重置需要用户 ID、原因和二次确认。" action={<div className="flex gap-2"><Button variant="outline" disabled={resetQuery.refreshing} onClick={resetQuery.reload}><RefreshCw className={resetQuery.refreshing ? "animate-spin motion-reduce:animate-none" : undefined} data-icon="inline-start" aria-hidden="true" />刷新</Button><Button onClick={() => { setResetErrors({}); setResetOpen(true) }}><RotateCcw data-icon="inline-start" aria-hidden="true" />手动重置</Button></div>} />
       {resetQuery.error ? <ResourceError title="流量重置日志读取失败" message={resetQuery.error} onRetry={resetQuery.reload} /> : null}
       <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><StatCard label="近 30 天总重置" value={stats?.total_resets} /><StatCard label="自动触发" value={stats?.auto_resets} /><StatCard label="定时任务" value={stats?.cron_resets} /><StatCard label="管理员手动" value={stats?.manual_resets} /></div>
       <Card className="gap-0 overflow-hidden py-0 shadow-none">

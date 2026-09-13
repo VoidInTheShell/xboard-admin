@@ -17,7 +17,6 @@ import {
   PlugZap,
   ReceiptText,
   Route,
-  RotateCcw,
   Server,
   Settings2,
   ShieldCheck,
@@ -92,8 +91,7 @@ export const adminNavigation: AdminNavGroup[] = [
       { title: "邮件配置", path: "/mail", icon: Mail },
       { title: "系统配置", path: "/settings", icon: Settings2 },
       { title: "主题与插件", path: "/extensions", icon: PlugZap },
-      { title: "审计日志", path: "/audit-logs", icon: FileClock },
-      { title: "流量重置日志", path: "/traffic-reset-logs", icon: RotateCcw },
+      { title: "日志", path: "/logs", icon: FileClock, keywords: ["审计", "邮件发送", "流量重置", "运行日志", "日志配置", "清理", "保留期"] },
     ],
   },
 ]

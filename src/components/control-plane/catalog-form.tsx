@@ -117,6 +117,8 @@ export function CatalogForm({
   onValuesChange,
   navigationStyle = 'sidebar',
   navigationLabel = '配置步骤',
+  navigationAppearance = 'steps',
+  navigationDescriptions = {},
   sidebarStickyOffset = 'container',
   fieldActions = {},
   focusRequest,
@@ -131,6 +133,8 @@ export function CatalogForm({
   onValuesChange?: (values: CatalogValues) => void
   navigationStyle?: 'underline' | 'sidebar'
   navigationLabel?: string
+  navigationAppearance?: 'steps' | 'cards'
+  navigationDescriptions?: Record<string, string>
   sidebarStickyOffset?: 'container' | 'page'
   fieldActions?: Record<string, React.ReactNode>
   focusRequest?: { key: string; token: number }
@@ -199,8 +203,9 @@ export function CatalogForm({
 
   const navigation = sidebarNavigation ? (
     <CatalogNavigation
-      items={tabs.map(tab => ({ id: tab.id, title: tab.title, icon: tab.icon, hasError: tabHasError(tab) }))}
+      items={tabs.map(tab => ({ id: tab.id, title: tab.title, icon: tab.icon, description: navigationDescriptions[tab.id], hasError: tabHasError(tab) }))}
       label={navigationLabel}
+      appearance={navigationAppearance}
       stickyScope={sidebarStickyOffset}
     />
   ) : (
@@ -241,6 +246,7 @@ export function CatalogForm({
         'relative min-w-0',
         sidebarNavigation &&
           'grid grid-cols-[minmax(0,1fr)] gap-4 overflow-visible lg:grid-cols-[12rem_minmax(0,1fr)] lg:items-start lg:gap-6',
+        sidebarNavigation && navigationAppearance === 'cards' && 'lg:grid-cols-[13.5rem_minmax(0,1fr)]',
       )}
     >
       {navigation}

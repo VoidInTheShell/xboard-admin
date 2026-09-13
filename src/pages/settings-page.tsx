@@ -1,5 +1,5 @@
 import * as React from "react"
-import { AlertCircle, Check, LoaderCircle, RefreshCw, Save } from "lucide-react"
+import { AlertCircle, Check, LoaderCircle, RefreshCw, Save, Globe2, ShieldCheck, PlugZap, FileCode2, Gift, Server, Send, MonitorSmartphone, Palette, type LucideIcon } from "lucide-react"
 import { toast } from "sonner"
 import { CatalogForm, type CatalogFieldErrors, type CatalogValues } from "@/components/control-plane/catalog-form"
 import { McpSettingsPanel } from "@/components/control-plane/mcp-settings-panel"
@@ -31,10 +31,23 @@ const mcpTab: CatalogTab = {
   sections: [],
 }
 
+const systemNavigation: Record<string, { icon: LucideIcon; description: string }> = {
+  site: { icon: Globe2, description: "站点信息与注册" },
+  safe: { icon: ShieldCheck, description: "入口与访问保护" },
+  mcp: { icon: PlugZap, description: "Agent 接入与授权" },
+  subscribe: { icon: FileCode2, description: "订阅与流量重置" },
+  invite: { icon: Gift, description: "邀请、返佣与提现" },
+  server: { icon: Server, description: "令牌与通信频率" },
+  telegram: { icon: Send, description: "机器人与群组" },
+  app: { icon: MonitorSmartphone, description: "下载地址与版本" },
+  frontend: { icon: Palette, description: "主题与页面外观" },
+}
+const navigationDescriptions = Object.fromEntries(Object.entries(systemNavigation).map(([id, item]) => [id, item.description]))
+
 function withMcpTab(tabs: CatalogTab[]) {
   const safeIndex = tabs.findIndex((tab) => tab.id === "safe")
   const insertAt = safeIndex >= 0 ? safeIndex + 1 : tabs.length
-  return [...tabs.slice(0, insertAt), mcpTab, ...tabs.slice(insertAt)]
+  return [...tabs.slice(0, insertAt), mcpTab, ...tabs.slice(insertAt)].map((tab) => ({ ...tab, icon: systemNavigation[tab.id]?.icon ?? tab.icon }))
 }
 
 export function SettingsPage() {
@@ -168,6 +181,8 @@ export function SettingsPage() {
               }}
               navigationStyle="sidebar"
               navigationLabel="配置分类"
+              navigationAppearance="cards"
+              navigationDescriptions={navigationDescriptions}
               sidebarStickyOffset="page"
               tabContent={{ mcp: <McpSettingsPanel /> }}
             />

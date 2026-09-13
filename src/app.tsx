@@ -40,12 +40,7 @@ const NoticesPage = lazy(() =>
 const KnowledgePage = lazy(() =>
   import("@/pages/knowledge-page").then((module) => ({ default: module.KnowledgePage })),
 )
-const AuditLogsPage = lazy(() =>
-  import("@/pages/audit-logs-page").then((module) => ({ default: module.AuditLogsPage })),
-)
-const TrafficResetLogsPage = lazy(() =>
-  import("@/pages/traffic-reset-logs-page").then((module) => ({ default: module.TrafficResetLogsPage })),
-)
+const LogsPage = lazy(() => import("@/pages/logs-page").then((module) => ({ default: module.LogsPage })))
 const UsersPage = lazy(() =>
   import("@/pages/users-page").then((module) => ({ default: module.UsersPage })),
 )
@@ -103,8 +98,9 @@ export function App() {
               <Route path="plans" element={<PlansPage />} />
               <Route path="notices" element={<NoticesPage />} />
               <Route path="knowledge" element={<KnowledgePage />} />
-              <Route path="audit-logs" element={<AuditLogsPage />} />
-              <Route path="traffic-reset-logs" element={<TrafficResetLogsPage />} />
+              <Route path="logs" element={<LogsPage />} />
+              <Route path="audit-logs" element={<LegacyLogRedirect section="audit" />} />
+              <Route path="traffic-reset-logs" element={<LegacyLogRedirect section="reset" />} />
               <Route path="users" element={<UsersPage />} />
               <Route path="orders" element={<OrdersPage />} />
               <Route path="commissions" element={<CommissionsPage />} />
@@ -130,6 +126,13 @@ function RequireAdmin() {
   const location = useLocation()
   if (!session) return <Navigate to="/login" replace state={{ from: { pathname: location.pathname } }} />
   return <Outlet />
+}
+
+function LegacyLogRedirect({ section }: { section: string }) {
+  const location = useLocation()
+  const params = new URLSearchParams(location.search)
+  params.set("section", section)
+  return <Navigate to={`/logs?${params}`} replace />
 }
 
 function PageFallback() {
