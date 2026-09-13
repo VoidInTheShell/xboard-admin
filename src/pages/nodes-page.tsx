@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { OnlineUsageCell } from '@/components/usage/server-usage-sheet'
 import { Link } from 'react-router-dom'
 import {
   RefreshCw,
@@ -231,6 +232,7 @@ export function NodesPage() {
                 />
               </TableHead>
               <TableHead>节点</TableHead>
+              <TableHead>在线人数 / 设备</TableHead>
               <TableHead>发布地址</TableHead>
               <TableHead>倍率</TableHead>
               <TableHead>标签</TableHead>
@@ -240,7 +242,7 @@ export function NodesPage() {
           </TableHeader>
           <TableBody>
             {query.loading ? (
-              <ResourceTableLoading columns={7} />
+              <ResourceTableLoading columns={8} />
             ) : (
               rows.map((node) => (
                 <TableRow
@@ -287,6 +289,7 @@ export function NodesPage() {
                       </div>
                     </div>
                   </TableCell>
+                  <TableCell><OnlineUsageCell nodeId={node.id} /></TableCell>
                   <TableCell className="font-data text-xs">
                     {node.host}:{node.port}
                   </TableCell>
@@ -380,7 +383,7 @@ export function NodesPage() {
             {!query.loading && !rows.length && (
               <TableRow>
                 <TableCell
-                  colSpan={7}
+                  colSpan={8}
                   className="h-24 text-center text-muted-foreground"
                 >
                   {search ? '没有匹配的节点。' : '尚未添加节点。'}

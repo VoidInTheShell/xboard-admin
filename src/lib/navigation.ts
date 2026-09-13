@@ -25,6 +25,7 @@ import {
   Tags,
   TicketCheck,
   Users,
+  Trophy,
 } from "lucide-react"
 
 export type AdminNavItem = {
@@ -44,7 +45,11 @@ export const adminNavigation: AdminNavGroup[] = [
   {
     label: "总览",
     icon: Gauge,
-    items: [{ title: "仪表盘", path: "/dashboard", icon: Gauge, keywords: ["状态", "概览"] }],
+    items: [
+      { title: "仪表盘", path: "/dashboard", icon: Gauge, keywords: ["状态", "概览"] },
+      { title: "使用记录", path: "/usage", icon: Activity, keywords: ["流量", "在线", "设备", "登录", "订阅记录"] },
+      { title: "排行榜", path: "/leaderboard", icon: Trophy, keywords: ["排名", "用户流量", "节点流量", "历史设备"] },
+    ],
   },
   {
     label: "基础设施",

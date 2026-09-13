@@ -129,23 +129,22 @@ export function AdminSidebar() {
           const groupActive = group.items.some((item) => isPathActive(pathname, item.path))
 
           if (group.label === "总览") {
-            const item = group.items[0]
             return (
               <SidebarGroup key={group.label} className="px-2 py-1">
                 <SidebarMenu>
-                  <SidebarMenuItem>
+                  {group.items.map(item => <SidebarMenuItem key={item.path}>
                     <SidebarMenuButton
                       asChild
-                      isActive={groupActive}
+                      isActive={isPathActive(pathname, item.path)}
                       tooltip={item.title}
                       className="h-9 data-[active=true]:font-semibold"
                     >
-                      <Link to={item.path} aria-current={groupActive ? "page" : undefined}>
+                      <Link to={item.path} aria-current={isPathActive(pathname, item.path) ? "page" : undefined}>
                         <item.icon aria-hidden="true" />
                         <span>{item.title}</span>
                       </Link>
                     </SidebarMenuButton>
-                  </SidebarMenuItem>
+                  </SidebarMenuItem>)}
                 </SidebarMenu>
               </SidebarGroup>
             )

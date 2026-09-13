@@ -8,6 +8,8 @@ import { useAuth } from "@/lib/auth"
 const DashboardPage = lazy(() =>
   import("@/pages/dashboard-page").then((module) => ({ default: module.DashboardPage })),
 )
+const UsagePage = lazy(() => import('@/pages/usage-page').then(module => ({ default: module.UsagePage })))
+const LeaderboardPage = lazy(() => import('@/pages/leaderboard-page').then(module => ({ default: module.LeaderboardPage })))
 const ServersPage = lazy(() =>
   import("@/pages/servers-page").then((module) => ({ default: module.ServersPage })),
 )
@@ -88,6 +90,8 @@ export function App() {
             <Route element={<AdminShell />}>
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="dashboard" element={<DashboardPage />} />
+              <Route path="usage" element={<UsagePage />} />
+              <Route path="leaderboard" element={<LeaderboardPage />} />
               <Route path="servers" element={<ServersPage />} />
               <Route path="servers/:serverId/outbounds" element={<Navigate to="/outbounds" replace />} />
               <Route path="servers/:serverId/:section" element={<ServerWorkspacePage />} />
