@@ -124,7 +124,6 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=raw,value=build-${{ github.run_id }}-${{ github.run_attempt }}
-            type=sha,format=long,prefix=sha-
             type=ref,event=branch
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
           labels: |
@@ -159,7 +158,7 @@ jobs:
     if: >-
       startsWith(github.ref, 'refs/heads/') &&
       (
-        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev') ||
         (github.event_name == 'push' && github.ref == 'refs/heads/dev')
       )
     needs: build-and-push
@@ -252,4 +251,85 @@ jobs:
           if [ -f "${SSH_DIR}/id_ed25519" ] && [ -n "${SSH_HOST:-}" ] && [ -n "${REMOTE_BUNDLE:-}" ]; then
             ssh -i "${SSH_DIR}/id_ed25519" -p "${SSH_PORT}" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=${SSH_DIR}/known_hosts" "${SSH_USER}@${SSH_HOST}" "case '${REMOTE_BUNDLE}' in /home/beihai/docker/.incoming/xboard-admin-*) rm -rf -- '${REMOTE_BUNDLE}' ;; *) exit 1 ;; esac"
           fi
+          rm -rf -- "${SSH_DIR}"
+
+  deploy-production:
+    name: Update JPGREEN production admin
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    concurrency:
+      group: production-${{ github.repository_id }}
+      cancel-in-progress: false
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_PANEL_URL }}
+    permissions:
+      contents: read
+      packages: read
+    env:
+      SSH_HOST: ${{ vars.PRODUCTION_SSH_HOST }}
+      SSH_PORT: ${{ vars.PRODUCTION_SSH_PORT }}
+      SSH_USER: ${{ vars.PRODUCTION_SSH_USER }}
+      PANEL_URL: ${{ vars.PRODUCTION_PANEL_URL }}
+      ADMIN_PATH: ${{ vars.PRODUCTION_ADMIN_PATH }}
+      DEPLOY_SSH_KEY: ${{ secrets.PRODUCTION_DEPLOY_SSH_KEY }}
+      SSH_KNOWN_HOSTS: ${{ secrets.PRODUCTION_SSH_KNOWN_HOSTS }}
+      GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      ADMIN_IMAGE: ghcr.io/voidintheshell/xboard-admin:${{ needs.build-and-push.outputs.image_tag }}
+    steps:
+      - name: Validate production configuration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          : "${SSH_HOST:?PRODUCTION_SSH_HOST is required}"
+          : "${SSH_PORT:?PRODUCTION_SSH_PORT is required}"
+          : "${SSH_USER:?PRODUCTION_SSH_USER is required}"
+          : "${PANEL_URL:?PRODUCTION_PANEL_URL is required}"
+          : "${ADMIN_PATH:?PRODUCTION_ADMIN_PATH is required}"
+          : "${DEPLOY_SSH_KEY:?PRODUCTION_DEPLOY_SSH_KEY is required}"
+          : "${SSH_KNOWN_HOSTS:?PRODUCTION_SSH_KNOWN_HOSTS is required}"
+          test "${PANEL_URL}" = 'https://panel.uegov.org'
+          test "${ADMIN_PATH}" = 'unitedearthgov'
+          test "${SSH_USER}" = 'xboard-ci'
+          [[ "${ADMIN_IMAGE}" =~ ^ghcr\.io/voidintheshell/xboard-admin:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]
+
+      - name: Prepare SSH
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          SSH_DIR="${RUNNER_TEMP}/deploy-ssh"
+          install -d -m 700 "${SSH_DIR}"
+          printf '%s\n' "${DEPLOY_SSH_KEY}" > "${SSH_DIR}/id_ed25519"
+          printf '%s\n' "${SSH_KNOWN_HOSTS}" > "${SSH_DIR}/known_hosts"
+
+      - name: Deploy production admin through the forced command
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SSH_DIR="${RUNNER_TEMP}/deploy-ssh"
+          SSH_TARGET="${SSH_USER}@${SSH_HOST}"
+          SSH_ARGS=(-i "${SSH_DIR}/id_ed25519" -p "${SSH_PORT}" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=${SSH_DIR}/known_hosts")
+          printf '%s\n' "${GHCR_TOKEN}" | ssh "${SSH_ARGS[@]}" "${SSH_TARGET}" \
+            "deploy-admin ${GITHUB_SHA} ${ADMIN_IMAGE} ${GITHUB_ACTOR}"
+
+      - name: Verify public theme and protected runtime from JPGREEN
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          SSH_DIR="${RUNNER_TEMP}/deploy-ssh"
+          SSH_TARGET="${SSH_USER}@${SSH_HOST}"
+          SSH_ARGS=(-i "${SSH_DIR}/id_ed25519" -p "${SSH_PORT}" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=${SSH_DIR}/known_hosts")
+          ssh "${SSH_ARGS[@]}" "${SSH_TARGET}" verify-production
+
+      - name: Remove the ephemeral deploy identity
+        if: always()
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          SSH_DIR="${RUNNER_TEMP}/deploy-ssh"
           rm -rf -- "${SSH_DIR}"
