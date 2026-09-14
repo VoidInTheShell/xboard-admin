@@ -56,6 +56,7 @@ export type RuntimeNode = {
   machine_id?: number
   protocol_settings?: JsonObject
   cert_config?: JsonObject
+  fallback_site?: JsonObject
   [key: string]: unknown
 }
 export type OutboundCandidate = {

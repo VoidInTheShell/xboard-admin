@@ -60,8 +60,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Textarea } from '@/components/ui/textarea'
-import { ApiError } from '@/lib/api'
+const ConfigEditor = React.lazy(() => import('@/components/ui/config-editor').then(module => ({ default: module.ConfigEditor })))
+import { ApiError, apiRequest } from '@/lib/api'
 import { useAdminApi } from '@/lib/auth'
 import { getErrorMessage, useAdminQuery } from '@/hooks/use-admin-query'
 import { useListSelection } from '@/hooks/use-list-selection'
@@ -73,6 +73,8 @@ type Notice = {
   img_url?: string | null
   tags?: string[] | null
   show: boolean | number
+  pinned?: boolean | number
+  require_ack?: boolean | number
   popup: boolean | number
   sort?: number
   updated_at?: number | string
@@ -86,6 +88,8 @@ type NoticeForm = {
   tags: string
   show: boolean
   popup: boolean
+  pinned: boolean
+  requireAck: boolean
 }
 
 const emptyForm: NoticeForm = {
@@ -95,6 +99,8 @@ const emptyForm: NoticeForm = {
   tags: '',
   show: true,
   popup: false,
+  pinned: false,
+  requireAck: false,
 }
 
 export function NoticesPage() {
@@ -131,6 +137,8 @@ export function NoticesPage() {
       tags: (notice.tags ?? []).join(', '),
       show: Boolean(notice.show),
       popup: Boolean(notice.popup),
+      pinned: Boolean(notice.pinned),
+      requireAck: Boolean(notice.require_ack),
     })
     setFormErrors({})
     setFormOpen(true)
@@ -140,6 +148,10 @@ export function NoticesPage() {
     setSaving(true)
     setFormErrors({})
     try {
+      if (form.requireAck || form.pinned) {
+        const capabilities = await apiRequest<{ notice_acknowledgement?: boolean }>('/api/v1/guest/comm/config')
+        if (capabilities.notice_acknowledgement !== true) throw new Error('当前服务尚不支持公告置顶与手动确认，请升级服务后重试。')
+      }
       await api.post<boolean>('notice/save', {
         ...(form.id ? { id: form.id } : {}),
         title: form.title.trim(),
@@ -148,6 +160,8 @@ export function NoticesPage() {
         tags: splitTags(form.tags),
         show: form.show,
         popup: form.popup,
+        pinned: form.pinned,
+        require_ack: form.requireAck,
       })
       toast.success(form.id ? '公告已更新' : '公告已创建')
       setFormOpen(false)
@@ -345,6 +359,10 @@ export function NoticesPage() {
                     </TableCell>
                     <TableCell className="max-w-xl">
                       <div className="font-medium">{notice.title}</div>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {notice.pinned ? <Badge variant="outline">置顶</Badge> : null}
+                        {notice.require_ack ? <Badge variant="secondary">需手动确认</Badge> : null}
+                      </div>
                       <p className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">
                         {plainText(notice.content) || '无正文'}
                       </p>
@@ -486,7 +504,7 @@ export function NoticesPage() {
           <DialogHeader>
             <DialogTitle>{form.id ? '编辑公告' : '新增公告'}</DialogTitle>
             <DialogDescription>
-              公告正文可以保存富文本标记，但列表中只做安全的纯文本摘要。
+              编辑公告内容，设置用户端展示、置顶和已读确认。
             </DialogDescription>
           </DialogHeader>
           <FieldGroup>
@@ -516,15 +534,9 @@ export function NoticesPage() {
                   *
                 </span>
               </FieldLabel>
-              <Textarea
-                id="notice-content"
-                rows={10}
-                value={form.content}
-                aria-invalid={Boolean(formErrors.content)}
-                onChange={(event) =>
-                  setForm({ ...form, content: event.target.value })
-                }
-              />
+              <React.Suspense fallback={<div className="h-64 rounded-xl border bg-muted" aria-label="正在加载公告编辑器" />}>
+                <ConfigEditor label="公告正文" language="html" rows={10} value={form.content} disabled={saving} onChange={content => setForm({ ...form, content })} />
+              </React.Suspense>
               <FieldDescription>
                 支持文本或 HTML 内容；请勿粘贴不可信脚本。
               </FieldDescription>
@@ -565,7 +577,7 @@ export function NoticesPage() {
                 />
               </Field>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-4">
               <Field orientation="horizontal">
                 <span>
                   <FieldLabel htmlFor="notice-show">用户端展示</FieldLabel>
@@ -580,6 +592,20 @@ export function NoticesPage() {
                     setForm({ ...form, show: checked })
                   }
                 />
+              </Field>
+              <Field orientation="horizontal">
+                <span>
+                  <FieldLabel htmlFor="notice-ack">用户手动确认</FieldLabel>
+                  <FieldDescription>用户点击“我已阅读并确认”后，不再自动弹出该公告。关闭弹窗不会标记已读。</FieldDescription>
+                </span>
+                <Switch id="notice-ack" checked={form.requireAck} onCheckedChange={checked => setForm({ ...form, requireAck: checked })} />
+              </Field>
+              <Field orientation="horizontal">
+                <span>
+                  <FieldLabel htmlFor="notice-pinned">置顶展示</FieldLabel>
+                  <FieldDescription>优先显示在公告列表；启用手动确认时，未确认的置顶公告会弹窗提醒。</FieldDescription>
+                </span>
+                <Switch id="notice-pinned" checked={form.pinned} onCheckedChange={checked => setForm({ ...form, pinned: checked })} />
               </Field>
               <Field orientation="horizontal">
                 <span>

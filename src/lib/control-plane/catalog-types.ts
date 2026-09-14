@@ -25,6 +25,7 @@ export type CatalogCondition = {
 export type CatalogField = {
   key: string
   backendKey?: string
+  sourceGroup?: string
   label: string
   control: CatalogControl
   description?: string

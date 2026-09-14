@@ -395,7 +395,7 @@ export function ClientsPage() {
         />
       ) : null}
       {!query.loading && Object.keys(devicePlatforms).length ? (
-        <Card className="mb-6 overflow-hidden shadow-none">
+        <Card className="@container/client-defaults mb-6 gap-0 overflow-hidden py-0 shadow-none">
           <div className="flex flex-col gap-2 border-b px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h2 className="text-base font-semibold">平台默认推荐</h2>
@@ -405,7 +405,7 @@ export function ClientsPage() {
             </div>
             <Badge variant="outline">每个平台最多一个</Badge>
           </div>
-          <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid min-w-0 gap-3 p-4 @min-[36rem]/client-defaults:grid-cols-2 @min-[64rem]/client-defaults:grid-cols-3">
             {Object.entries(devicePlatforms).flatMap(([device, platforms]) =>
               platforms.map((platform) => {
                 const key = `${device}:${platform}`
@@ -424,7 +424,7 @@ export function ClientsPage() {
                     key={key}
                     className="min-w-0 rounded-xl border bg-card p-4"
                   >
-                    <div className="flex items-start justify-between gap-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="text-sm font-medium">
                           {platformLabels[device] ?? device} ·{' '}

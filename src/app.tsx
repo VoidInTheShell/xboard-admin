@@ -28,6 +28,7 @@ const PermissionGroupsPage = lazy(() =>
 const SubscriptionManagementPage = lazy(() =>
   import("@/pages/subscription-management-page").then((module) => ({ default: module.SubscriptionManagementPage })),
 )
+const ClientsPage = lazy(() => import("@/pages/clients-page").then(module => ({ default: module.ClientsPage })))
 const SettingsPage = lazy(() =>
   import("@/pages/settings-page").then((module) => ({ default: module.SettingsPage })),
 )
@@ -58,9 +59,6 @@ const TicketsPage = lazy(() =>
 )
 const GiftCardsPage = lazy(() =>
   import("@/pages/gift-cards-page").then((module) => ({ default: module.GiftCardsPage })),
-)
-const ClientsPage = lazy(() =>
-  import("@/pages/clients-page").then((module) => ({ default: module.ClientsPage })),
 )
 const MailPage = lazy(() =>
   import("@/pages/mail-page").then((module) => ({ default: module.MailPage })),

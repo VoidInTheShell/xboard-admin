@@ -10,7 +10,7 @@ export function createConfigValues(tabs: CatalogTab[], groups: ConfigGroups): Ca
     const source = groups[tab.id] ?? {}
     for (const field of tab.sections.flatMap((section) => section.fields)) {
       const backendKey = field.backendKey ?? field.key
-      const sourceValue = source[backendKey]
+      const sourceValue = (field.sourceGroup ? groups[field.sourceGroup] ?? {} : source)[backendKey]
       values[field.key] = normalizeFieldValue(field, sourceValue)
     }
   }

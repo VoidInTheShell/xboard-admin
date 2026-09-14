@@ -121,6 +121,7 @@ export function CatalogForm({
   navigationDescriptions = {},
   sidebarStickyOffset = 'container',
   fieldActions = {},
+  fieldControls = {},
   focusRequest,
   tabContent = {},
 }: {
@@ -137,6 +138,7 @@ export function CatalogForm({
   navigationDescriptions?: Record<string, string>
   sidebarStickyOffset?: 'container' | 'page'
   fieldActions?: Record<string, React.ReactNode>
+  fieldControls?: Record<string, React.ReactNode>
   focusRequest?: { key: string; token: number }
   tabContent?: Record<string, React.ReactNode>
 }) {
@@ -220,6 +222,7 @@ export function CatalogForm({
             value={tab.id}
             className="h-10 flex-none rounded-b-none rounded-t-xl border-0 px-3 shadow-none after:bottom-[-1px] after:bg-primary data-[state=active]:border-0 data-[state=active]:text-primary"
           >
+            {tab.icon ? <tab.icon aria-hidden="true" className="size-4" /> : null}
             {tab.title}
             {tabHasError(tab) ? (
               <CircleAlert
@@ -274,6 +277,7 @@ export function CatalogForm({
                   disabled={disabled}
                   update={update}
                   fieldActions={fieldActions}
+                  fieldControls={fieldControls}
                 />
               </>
             )}
@@ -291,6 +295,7 @@ function CatalogTabSections({
   disabled,
   update,
   fieldActions,
+  fieldControls,
 }: {
   tab: CatalogTab
   values: CatalogValues
@@ -298,6 +303,7 @@ function CatalogTabSections({
   disabled: boolean
   update: (key: string, value: CatalogValue) => void
   fieldActions: Record<string, React.ReactNode>
+  fieldControls: Record<string, React.ReactNode>
 }) {
   const visibleSections = tab.sections
     .map((section) => ({
@@ -362,6 +368,7 @@ function CatalogTabSections({
                     controlsFollowingTallField
                   }
                   action={fieldActions[field.key]}
+                  content={fieldControls[field.key]}
                 />
               )
             })}
@@ -380,6 +387,7 @@ function CatalogFieldControl({
   update,
   fullWidth,
   action,
+  content,
 }: {
   field: CatalogField
   value: CatalogValue | undefined
@@ -388,6 +396,7 @@ function CatalogFieldControl({
   update: (key: string, value: CatalogValue) => void
   fullWidth: boolean
   action?: React.ReactNode
+  content?: React.ReactNode
 }) {
   const reactId = React.useId()
   const inputId = `${reactId}-${field.key.replace(/[^a-zA-Z0-9_-]/g, '-')}`
@@ -399,6 +408,13 @@ function CatalogFieldControl({
     fullWidth && '@min-[34rem]/catalog-section:col-span-2',
   )
   const describedBy = invalid ? errorId : undefined
+
+  if (content) {
+    return <div className={wrapperClass} data-config-field={field.key} tabIndex={-1}>
+      {content}
+      <FieldError id={errorId} errors={errors?.map(message => ({ message }))} />
+    </div>
+  }
 
   if (field.control === 'switch') {
     return (

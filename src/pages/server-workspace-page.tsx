@@ -14,6 +14,7 @@ import { PageHeader } from '@/components/layout/page-header'
 import { WireDialog, WireEditor } from '@/components/control-plane/wire-editor'
 import { RuntimeNodeDialog } from '@/components/control-plane/runtime-node-dialog'
 import { RuleFilesManagerDialog } from '@/components/control-plane/rule-files-manager-dialog'
+import { FallbackSiteEditor } from '@/components/control-plane/fallback-site-editor'
 import { ResourceError } from '@/components/control-plane/resource-states'
 import { ConfirmActionDialog } from '@/components/control-plane/confirm-action-dialog'
 import { StatusBadge } from '@/components/data/status-badge'
@@ -970,6 +971,14 @@ export function ServerWorkspacePage() {
                   if (snapshot.outbound_bindings.length) delete next.outbounds
                   return save(next)
                 }}
+              />
+            )}
+            {active === 'fallback' && (
+              <FallbackSiteEditor
+                key={'fallback-' + node.id + '-' + snapshot.config_revision}
+                node={node}
+                effectiveInbound={snapshot.effective_inbound}
+                onSave={(value) => saveNode({ fallback_site: value })}
               />
             )}
             {active === 'routing' && (

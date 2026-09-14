@@ -14,6 +14,7 @@ import {
   Mail,
   MonitorSmartphone,
   PackageOpen,
+  PanelsTopLeft,
   PlugZap,
   ReceiptText,
   Route,
@@ -59,6 +60,7 @@ export const adminNavigation: AdminNavGroup[] = [
       { title: "节点管理", path: "/nodes", icon: Globe2, keywords: ["倍率", "流量"] },
       { title: "权限组管理", path: "/permission-groups", icon: ShieldCheck, keywords: ["分组", "可见性"] },
       { title: "订阅管理", path: "/subscriptions", icon: FileCode2, keywords: ["订阅模板", "Clash", "Sing-box"] },
+      { title: "客户端适配", path: "/clients", icon: MonitorSmartphone, keywords: ["下载", "平台", "默认推荐"] },
     ],
   },
   {
@@ -80,7 +82,6 @@ export const adminNavigation: AdminNavGroup[] = [
       { title: "知识库", path: "/knowledge", icon: BookOpenText },
       { title: "工单管理", path: "/tickets", icon: TicketCheck },
       { title: "邀请与佣金", path: "/commissions", icon: Gift },
-      { title: "客户端适配", path: "/clients", icon: MonitorSmartphone },
     ],
   },
   {
@@ -99,6 +100,7 @@ export const adminNavigation: AdminNavGroup[] = [
 export const serverWorkspaceTabs = [
   { title: "入站", value: "inbounds", icon: Layers3 },
   { title: "发布端点", value: "hosts", icon: Activity },
+  { title: "回落站点", value: "fallback", icon: PanelsTopLeft },
   { title: "证书管理", value: "certificates", icon: KeyRound },
   { title: "路由", value: "routing", icon: ReceiptText },
   { title: "Xray 配置", value: "xray-config", icon: Settings2 },

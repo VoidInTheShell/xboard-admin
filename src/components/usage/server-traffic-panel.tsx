@@ -199,7 +199,7 @@ export function ServerTrafficPanel({
           上报的代理流量，不含计费倍率。两种口径独立展示，不相加，也不直接将差值视为其他服务用量。用户、节点筛选不适用于整机网卡。
         </AlertDescription>
       </Alert>
-      <div className="grid min-w-0 gap-4 xl:grid-cols-2">
+      <div className="grid min-w-0 grid-cols-1 gap-4">
         <HistoryCard
           title="服务器网卡流量"
           description="入站 RX / 出站 TX / 总量 · UTC+8"
