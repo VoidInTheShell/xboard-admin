@@ -1,3 +1,4 @@
+import { formatTrafficBytes } from "@/lib/traffic-format";
 import type { JsonObject } from './xray-wire'
 
 export type MachineResourceLoad = {
@@ -163,15 +164,7 @@ export function formatPercent(value: number | null) {
 }
 
 export function formatBytes(value: number | null) {
-  if (value === null || !Number.isFinite(value) || value < 0) return '暂无数据'
-  if (value === 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
-  const exponent = Math.min(
-    Math.max(0, Math.floor(Math.log(Math.abs(value)) / Math.log(1024))),
-    units.length - 1,
-  )
-  const amount = value / 1024 ** exponent
-  return `${new Intl.NumberFormat('zh-CN', { maximumFractionDigits: amount >= 100 ? 0 : 1 }).format(amount)} ${units[exponent]}`
+  return formatTrafficBytes(value);
 }
 
 export function formatRate(value: number | null) {

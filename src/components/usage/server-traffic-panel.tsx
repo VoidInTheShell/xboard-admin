@@ -54,7 +54,12 @@ export function ServerTrafficPanel({
 }) {
   const api = useUsageApi();
   const [remoteRows, setRemoteRows] = useState<
-    (ServerTrafficSample & { layer: string; name: string; nodeId: string })[]
+    (ServerTrafficSample & {
+      layer: string;
+      name: string;
+      nodeId: string;
+      collectionScope?: string;
+    })[]
   >([]);
   const [error, setError] = useState("");
   const [loadedScope, setLoadedScope] = useState("");
@@ -111,7 +116,12 @@ export function ServerTrafficPanel({
               {
                 id: r.resourceId,
                 serverId: r.serverId,
-                name: r.name,
+                name:
+                  (r.collectionScope === "host"
+                    ? "宿主机 · "
+                    : r.collectionScope === "container"
+                      ? "容器 · "
+                      : "范围未标注 · ") + r.name,
                 server: "SID " + r.serverId,
               },
             ]),
@@ -184,15 +194,15 @@ export function ServerTrafficPanel({
         <Info />
         <AlertDescription>
           {error && <span>{error}</span>}
-          网卡是选定物理 / 公网接口的 RX、TX
-          字节增量，包含代理、面板及其他服务；实例是 Xray / sing-box
+          网卡记录按采集范围标注：宿主机网卡包含该接口上其他服务的流量，容器网卡仅包含容器网络；旧记录的范围未标注。
+          实例是 Xray / sing-box
           上报的代理流量，不含计费倍率。两种口径独立展示，不相加，也不直接将差值视为其他服务用量。用户、节点筛选不适用于整机网卡。
         </AlertDescription>
       </Alert>
       <div className="grid min-w-0 gap-4 xl:grid-cols-2">
         <HistoryCard
           title="服务器网卡流量"
-          description="入站 RX / 出站 TX / 总量 · GiB · UTC+8"
+          description="入站 RX / 出站 TX / 总量 · UTC+8"
           range={range}
           onRangeChange={onRangeChange}
         >

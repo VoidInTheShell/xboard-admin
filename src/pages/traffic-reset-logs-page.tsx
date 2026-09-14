@@ -1,3 +1,4 @@
+import { formatTrafficBytes } from "@/lib/traffic-format";
 import * as React from "react"
 import { LoaderCircle, RefreshCw, RotateCcw, Search } from "lucide-react"
 import { useSearchParams } from "react-router-dom"
@@ -121,10 +122,7 @@ function StatCard({ label, value }: { label: string; value?: number }) {
 }
 
 function formatBytes(value?: number) {
-  if (!value) return "0 B"
-  const units = ["B", "KiB", "MiB", "GiB", "TiB"]
-  const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), units.length - 1)
-  return `${(value / 1024 ** index).toFixed(2)} ${units[index]}`
+  return formatTrafficBytes(value);
 }
 
 function formatTime(value: string) {

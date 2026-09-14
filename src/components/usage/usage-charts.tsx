@@ -1,3 +1,4 @@
+import { formatUsageValue } from "@/lib/traffic-format";
 import { useId, useRef, useState, type ReactNode } from "react";
 import {
   Area,
@@ -291,10 +292,11 @@ export function UsageTimeChart({
         tickFormatter={(v) => String(v).replace(/^\d{4}-/, "")}
       />
       <YAxis
-        width={42}
+        width={88}
         tickLine={false}
         axisLine={false}
         allowDecimals={kind !== "online" && kind !== "pulls"}
+        tickFormatter={(value) => formatUsageValue(Number(value), unit)}
       />
       <ChartTooltip
         content={
@@ -305,10 +307,7 @@ export function UsageTimeChart({
                   {config[name as keyof typeof config]?.label ?? name}
                 </span>
                 <span className="font-mono tabular-nums">
-                  {Number(value).toLocaleString("zh-CN", {
-                    maximumFractionDigits: 2,
-                  })}{" "}
-                  {unit}
+                  {formatUsageValue(Number(value), unit)}
                 </span>
               </div>
             )}
@@ -491,6 +490,8 @@ export function RankingChart({
           tickLine={false}
           axisLine={false}
           allowDecimals={unit !== "个"}
+          minTickGap={24}
+          tickFormatter={(value) => formatUsageValue(Number(value), unit)}
         />
         <YAxis
           type="category"
@@ -511,10 +512,7 @@ export function RankingChart({
             <ChartTooltipContent
               formatter={(value) => (
                 <span className="font-mono">
-                  {Number(value).toLocaleString("zh-CN", {
-                    maximumFractionDigits: unit === "个" ? 0 : 2,
-                  })}{" "}
-                  {unit}
+                  {formatUsageValue(Number(value), unit)}
                 </span>
               )}
             />

@@ -492,7 +492,7 @@ export function UsageExplorer({ selfOnly = false }: { selfOnly?: boolean }) {
       }, new Map<string, number>())
       .entries(),
   ]
-    .map(([name, value]) => ({ name, value: +value.toFixed(2) }))
+    .map(([name, value]) => ({ name, value }))
     .sort((a, b) => b.value - a.value)
     .slice(0, 6);
   const ranks = usagePreviewEnabled
@@ -740,16 +740,12 @@ export function UsageExplorer({ selfOnly = false }: { selfOnly?: boolean }) {
                 label={selfOnly ? "当前下载 / 上传" : "用户代理下载 / 上传"}
                 value={
                   <span className="text-xl">
-                    {freshDevices
-                      .reduce((sum, d) => sum + (d.downloadRate ?? 0), 0)
-                      .toFixed(1)}{" "}
+                    {formatSpeed(freshDevices.some((d) => d.downloadRate !== null) ? freshDevices.reduce((sum, d) => sum + (d.downloadRate ?? 0), 0) : null)}{" "}
                     /{" "}
-                    {freshDevices
-                      .reduce((sum, d) => sum + (d.uploadRate ?? 0), 0)
-                      .toFixed(1)}
+                    {formatSpeed(freshDevices.some((d) => d.uploadRate !== null) ? freshDevices.reduce((sum, d) => sum + (d.uploadRate ?? 0), 0) : null)}
                   </span>
                 }
-                hint="MiB/s · 最近有效采样"
+                hint="最近有效采样"
                 icon={<Activity />}
               />
               <UsageMetric
@@ -823,7 +819,7 @@ export function UsageExplorer({ selfOnly = false }: { selfOnly?: boolean }) {
                 <div className="grid min-w-0 gap-4 xl:grid-cols-[1.5fr_1fr]">
                   <HistoryCard
                     title="流量趋势"
-                    description="用户 / 节点原始上传与下载 · GiB；网卡及实例统计见流量明细"
+                    description="用户 / 节点原始上传与下载；网卡及实例统计见流量明细"
                     {...historyProps}
                   >
                     <UsageTimeChart data={series} />
@@ -849,14 +845,14 @@ export function UsageExplorer({ selfOnly = false }: { selfOnly?: boolean }) {
                   </HistoryCard>
                   <HistoryCard
                     title="每日流量"
-                    description="按自然日汇总上传与下载 · GiB"
+                    description="按自然日汇总上传与下载"
                     {...historyProps}
                   >
                     <UsageTimeChart data={daily} kind="bar" />
                   </HistoryCard>
                   <HistoryCard
                     title="流量分布"
-                    description="当前筛选范围内的原始流量 · GiB"
+                    description="当前筛选范围内的原始流量"
                     {...historyProps}
                   >
                     <div className="mb-3">
@@ -1092,7 +1088,7 @@ export function UsageExplorer({ selfOnly = false }: { selfOnly?: boolean }) {
                                   item.date,
                                   item.upload,
                                   item.download,
-                                  +(item.upload + item.download).toFixed(2),
+                                  item.upload + item.download,
                                   item.billed,
                                 ]),
                               ],
@@ -1524,7 +1520,7 @@ export function UsageExplorer({ selfOnly = false }: { selfOnly?: boolean }) {
                     {detailDevice && (
                       <HistoryCard
                         title="设备历史流量"
-                        description="与该设备标识关联的原始流量 · GiB"
+                        description="与该设备标识关联的原始流量"
                         {...historyProps}
                       >
                         <UsageTimeChart data={detailHistory} />

@@ -357,7 +357,7 @@ export function LeaderboardExplorer({
                         {cumulative ? "累计历史记录" : "跟随所选日期"} ·{" "}
                         {kind === "devices"
                           ? "按用户去重的历史 IP 数量"
-                          : "原始流量 GiB"}{" "}
+                          : "原始流量"}{" "}
                         · 同分并列
                       </CardDescription>
                     </CardHeader>

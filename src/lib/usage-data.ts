@@ -1,3 +1,4 @@
+import { formatUsageValue } from "@/lib/traffic-format";
 export const usagePreviewEnabled =
   import.meta.env.DEV && import.meta.env.VITE_USAGE_PREVIEW === "true";
 export type UsageScope = {
@@ -124,12 +125,10 @@ export function inRange(at: number, range: UsageRange, now: number) {
   return at >= from && at <= to;
 }
 export function formatGiB(value: number) {
-  return value >= 1024
-    ? `${(value / 1024).toLocaleString("zh-CN", { maximumFractionDigits: 2 })} TiB`
-    : `${value.toLocaleString("zh-CN", { maximumFractionDigits: 2 })} GiB`;
+  return formatUsageValue(value);
 }
 export function formatSpeed(value: number | null) {
-  return value === null ? "—" : `${value.toFixed(2)} MiB/s`;
+  return value === null ? "—" : formatUsageValue(value, "MiB/s");
 }
 export function formatTime(at: number) {
   return new Date(at).toLocaleString("zh-CN", {

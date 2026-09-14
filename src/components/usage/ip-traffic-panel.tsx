@@ -161,10 +161,10 @@ function IpTrend({
           tickFormatter={(v: string) => v.replace(/^\d{4}-/, "")}
         />
         <YAxis
-          width={45}
+          width={88}
           tickLine={false}
           axisLine={false}
-          tickFormatter={(v: number) => v.toFixed(0)}
+          tickFormatter={(v: number) => formatGiB(v)}
         />
         <ChartTooltip
           content={
@@ -240,9 +240,10 @@ function IpBars({
         <CartesianGrid horizontal={false} />
         <XAxis
           type="number"
+          minTickGap={24}
           tickLine={false}
           axisLine={false}
-          tickFormatter={(v: number) => v.toFixed(0)}
+          tickFormatter={(v: number) => formatGiB(v)}
         />
         <YAxis
           type="category"
@@ -592,7 +593,7 @@ export function IpTrafficPanel({
       <div className="grid min-w-0 gap-4 2xl:grid-cols-[1.35fr_1fr]">
         <HistoryCard
           title="IP 流量趋势"
-          description="GiB · 上传 / 下载 · UTC+8；近24小时按小时，其他范围按天。"
+          description="上传 / 下载 · UTC+8；近24小时按小时，其他范围按天。"
           {...historyProps}
         >
           <IpTrend
@@ -605,8 +606,8 @@ export function IpTrafficPanel({
           title="高用量 IP · TOP 6"
           description={
             selfOnly
-              ? "同一 IP 跨节点汇总，按已知总流量排序。单位 GiB。"
-              : "按用户 / IP 跨节点汇总；相同 IP 的不同用户独立排序。单位 GiB。"
+              ? "同一 IP 跨节点汇总，按已知总流量排序。"
+              : "按用户 / IP 跨节点汇总；相同 IP 的不同用户独立排序。"
           }
           {...historyProps}
         >
@@ -956,7 +957,7 @@ export function IpTrafficPanel({
             </div>
             <HistoryCard
               title="此 IP 的流量趋势"
-              description="GiB · 仅选中用户 / IP，缺失采样不补零。"
+              description="仅选中用户 / IP，缺失采样不补零。"
               range={detailRange}
               onRangeChange={setDetailRange}
             >
@@ -964,7 +965,7 @@ export function IpTrafficPanel({
             </HistoryCard>
             <HistoryCard
               title="节点流量分布"
-              description="GiB · 所选 IP 在各节点上的上传与下载。"
+              description="所选 IP 在各节点上的上传与下载。"
               range={detailRange}
               onRangeChange={setDetailRange}
             >
