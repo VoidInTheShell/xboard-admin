@@ -14,6 +14,11 @@ RUN npm run build
 
 FROM nginx:1.28-alpine
 
+ARG APP_VERSION=dev
+ENV APP_VERSION=${APP_VERSION}
+LABEL org.opencontainers.image.version=${APP_VERSION}
+RUN printf '%s\n' "$APP_VERSION" > /etc/xboard-version
+
 COPY deploy/staging/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /app/dist /usr/share/nginx/html/xboard-admin
 

@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: ["**"]
   workflow_dispatch:
+    inputs:
+      release_version:
+        description: "Formal version (vX.Y.Z); publish only, never deploy. Empty keeps the transitional workflow."
+        required: false
+        type: string
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -14,7 +19,7 @@ env:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -90,19 +95,52 @@ jobs:
             esac
           fi
 
+
+  prepare-release:
+    name: Freeze version and release plan
+    if: github.event_name != 'pull_request'
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      publish: ${{ steps.plan.outputs.publish }}
+      plan_artifact: release-plan-${{ steps.plan.outputs.version }}
+      checkout_ref: ${{ steps.plan.outputs.checkout_ref }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+      - name: Prepare exact version
+        id: plan
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+        run: python3 .github/scripts/release.py prepare
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-plan-${{ steps.plan.outputs.version }}
+          overwrite: true
+          path: ${{ runner.temp }}/release-manifest.json
+          if-no-files-found: error
+          retention-days: 30
+
   build-and-push:
     name: Publish multi-architecture image
     if: github.event_name != 'pull_request'
-    needs: test
+    needs: [test, prepare-release]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
     outputs:
-      image_tag: build-${{ github.run_id }}-${{ github.run_attempt }}
+      image_tag: ${{ needs.prepare-release.outputs.version }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.prepare-release.outputs.checkout_ref }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
@@ -117,20 +155,33 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+
+      - name: Verify checkout and load frozen plan
+        env:
+          EXPECTED_COMMIT: ${{ github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: ${{ needs.prepare-release.outputs.plan_artifact }}
+          path: ${{ runner.temp }}
+      - name: Preserve an already built version on retry
+        id: existing-image
+        run: python3 .github/scripts/release.py image-check
+
       - name: Generate image metadata
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: latest=false
           tags: |
-            type=raw,value=build-${{ github.run_id }}-${{ github.run_attempt }}
-            type=ref,event=branch
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=${{ needs.prepare-release.outputs.version }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
 
       - name: Build and push image
+        if: steps.existing-image.outputs.exists != 'true'
         id: push
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
@@ -140,14 +191,26 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
+            APP_VERSION=${{ needs.prepare-release.outputs.version }}
             VITE_BASE_PATH=/unitedearthgov/
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: true
 
+      - name: Verify published runtime version on both architectures
+        env:
+          EXPECTED_VERSION: ${{ needs.prepare-release.outputs.version }}
+        run: |
+          set -Eeuo pipefail
+          image="${REGISTRY}/${IMAGE_NAME}:${EXPECTED_VERSION}"
+          for platform in linux/amd64 linux/arm64; do
+            actual=$(docker run --rm --platform "$platform" --entrypoint cat "$image" /etc/xboard-version)
+            test "$actual" = "$EXPECTED_VERSION"
+          done
+
       - name: Report staging image tag
         env:
-          IMAGE_TAG: build-${{ github.run_id }}-${{ github.run_attempt }}
+          IMAGE_TAG: ${{ needs.prepare-release.outputs.version }}
         run: |
           image="${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
           echo "Published staging image: ${image}"
@@ -155,7 +218,10 @@ jobs:
 
   deploy-staging:
     name: Update GJHK standalone admin
+    # Paused while upgrades are validated through the panel-owned updater.
     if: >-
+      false &&
+      inputs.release_version == '' &&
       startsWith(github.ref, 'refs/heads/') &&
       (
         (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev') ||
@@ -255,7 +321,10 @@ jobs:
 
   deploy-production:
     name: Update JPGREEN production admin
+    # Keep recovery implementation without deploying from CI.
     if: >-
+      false &&
+      inputs.release_version == '' &&
       github.ref == 'refs/heads/main' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     needs: build-and-push
@@ -333,3 +402,33 @@ jobs:
           set +e
           SSH_DIR="${RUNNER_TEMP}/deploy-ssh"
           rm -rf -- "${SSH_DIR}"
+
+  release:
+    name: Publish complete version
+    needs: [prepare-release, build-and-push]
+    if: needs.prepare-release.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ needs.prepare-release.outputs.checkout_ref }}
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: ${{ needs.prepare-release.outputs.plan_artifact }}
+          path: ${{ runner.temp }}
+      - name: Publish only after every required artifact is ready
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python3 .github/scripts/release.py complete

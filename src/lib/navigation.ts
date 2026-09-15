@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react"
 import {
   Activity,
+  ArrowUpCircle,
   BellRing,
   BookOpenText,
   CircleDollarSign,
@@ -91,6 +92,7 @@ export const adminNavigation: AdminNavGroup[] = [
       { title: "支付配置", path: "/payments", icon: CircleDollarSign },
       { title: "邮件配置", path: "/mail", icon: Mail },
       { title: "系统配置", path: "/settings", icon: Settings2 },
+      { title: "版本更新", path: "/updates", icon: ArrowUpCircle, keywords: ["升级", "版本", "release", "dev", "节点客户端更新", "实例", "面板更新"] },
       { title: "主题与插件", path: "/extensions", icon: PlugZap },
       { title: "日志", path: "/logs", icon: FileClock, keywords: ["审计", "邮件发送", "流量重置", "运行日志", "日志配置", "清理", "保留期"] },
     ],

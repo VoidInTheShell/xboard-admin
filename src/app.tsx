@@ -72,6 +72,7 @@ const ExtensionsPage = lazy(() =>
 const LoginPage = lazy(() =>
   import("@/pages/login-page").then((module) => ({ default: module.LoginPage })),
 )
+const UpdatesPage = lazy(() => import("@/pages/updates-page").then(module => ({ default: module.UpdatesPage })))
 
 export function App() {
   return (
@@ -109,6 +110,7 @@ export function App() {
               <Route path="mail" element={<MailPage />} />
               <Route path="payments" element={<PaymentsPage />} />
               <Route path="extensions" element={<ExtensionsPage />} />
+              <Route path="updates" element={<UpdatesPage />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
