@@ -55,6 +55,12 @@ type TemplateDetail = {
   content: string
 }
 
+type MailTestResponse = {
+  data?: {
+    error?: string | null
+  }
+}
+
 type MailSettingsValues = {
   email_host: string
   email_port: number | ""
@@ -120,6 +126,8 @@ export function MailPage() {
   const [loadingMailSettings, setLoadingMailSettings] = React.useState(true)
   const [savingMailSettings, setSavingMailSettings] = React.useState(false)
   const [mailSettingsReload, setMailSettingsReload] = React.useState(0)
+  const [mailSettingsTestOpen, setMailSettingsTestOpen] = React.useState(false)
+  const [testingMailSettings, setTestingMailSettings] = React.useState(false)
 
   const summaries = React.useMemo(() => listQuery.data ?? [], [listQuery.data])
   const dirty = Boolean(baseline && (baseline.subject !== subject || baseline.content !== content))
@@ -232,6 +240,24 @@ export function MailPage() {
     }
   }
 
+  async function sendMailSettingsTest() {
+    if (!mailSettingsBaseline || mailSettingsDirtyCount || !session?.email) return
+
+    setTestingMailSettings(true)
+    try {
+      const result = await api.post<MailTestResponse>("config/testSendMail")
+      const deliveryError = result.data?.error
+      if (deliveryError) throw new Error(`发送失败：${deliveryError}`)
+
+      toast.success(`测试邮件已发送至 ${session.email}`)
+      setMailSettingsTestOpen(false)
+    } catch (error) {
+      toast.error(getErrorMessage(error, "测试邮件发送失败。"))
+    } finally {
+      setTestingMailSettings(false)
+    }
+  }
+
   function selectTemplate(name: string) {
     if (name === selectedName) {
       selectSection("templates")
@@ -256,6 +282,14 @@ export function MailPage() {
       <Badge variant={mailSettingsDirtyCount ? "outline" : "secondary"} className="font-data text-[10px]">
         {mailSettingsDirtyCount ? `${mailSettingsDirtyCount} 项待保存` : "已与后端同步"}
       </Badge>
+      <Button
+        variant="outline"
+        disabled={!mailSettingsBaseline || !session?.email || loadingMailSettings || savingMailSettings || testingMailSettings}
+        title={mailSettingsDirtyCount ? "请先保存当前邮件设置" : undefined}
+        onClick={() => setMailSettingsTestOpen(true)}
+      >
+        <Send data-icon="inline-start" aria-hidden="true" />发送测试邮件
+      </Button>
       <Button disabled={!mailSettingsBaseline || !mailSettingsDirtyCount || savingMailSettings || loadingMailSettings} onClick={() => void saveMailSettings()}>
         {savingMailSettings ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" aria-hidden="true" /> : mailSettingsDirtyCount ? <Save data-icon="inline-start" aria-hidden="true" /> : <Check data-icon="inline-start" aria-hidden="true" />}
         {savingMailSettings ? "保存中" : "保存邮件设置"}
@@ -326,6 +360,15 @@ export function MailPage() {
         </main>
       </div>
 
+      <MailSettingsTestDialog
+        open={mailSettingsTestOpen}
+        onOpenChange={setMailSettingsTestOpen}
+        adminEmail={session?.email ?? ""}
+        dirty={Boolean(mailSettingsDirtyCount)}
+        busy={testingMailSettings}
+        onConfirm={sendMailSettingsTest}
+      />
+
       <DialogSet
         detail={detail}
         dirty={dirty}
@@ -348,6 +391,52 @@ export function MailPage() {
         onReset={resetTemplate}
       />
     </div>
+  )
+}
+
+function MailSettingsTestDialog({
+  open,
+  onOpenChange,
+  adminEmail,
+  dirty,
+  busy,
+  onConfirm,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  adminEmail: string
+  dirty: boolean
+  busy: boolean
+  onConfirm: () => Promise<void>
+}) {
+  return (
+    <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>发送测试邮件</DialogTitle>
+          <DialogDescription>使用当前已保存的 SMTP 设置发送一封真实测试邮件，收件地址为当前登录管理员邮箱。</DialogDescription>
+        </DialogHeader>
+        {dirty ? (
+          <Alert variant="destructive">
+            <AlertCircle aria-hidden="true" />
+            <AlertTitle>存在未保存的邮件设置</AlertTitle>
+            <AlertDescription>请先保存邮件基本设置，再发送测试邮件以验证最新配置。</AlertDescription>
+          </Alert>
+        ) : null}
+        <Field>
+          <FieldLabel htmlFor="mail-settings-test-email">收件邮箱</FieldLabel>
+          <Input id="mail-settings-test-email" type="email" value={adminEmail} readOnly aria-readonly="true" />
+          <FieldDescription>收件地址由当前登录管理员账号确定，无法在此处修改。</FieldDescription>
+        </Field>
+        <DialogFooter>
+          <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>取消</Button>
+          <Button disabled={dirty || !adminEmail || busy} onClick={() => void onConfirm()}>
+            {busy ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" aria-hidden="true" /> : <Send data-icon="inline-start" aria-hidden="true" />}
+            {busy ? "发送中" : "发送测试邮件"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
