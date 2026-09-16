@@ -13,12 +13,15 @@ import { toast } from 'sonner'
 import { PageHeader } from '@/components/layout/page-header'
 import { WireDialog, WireEditor } from '@/components/control-plane/wire-editor'
 import { RuntimeNodeDialog } from '@/components/control-plane/runtime-node-dialog'
+import { RuleFilesManagerDialog } from '@/components/control-plane/rule-files-manager-dialog'
+import { FallbackSiteEditor } from '@/components/control-plane/fallback-site-editor'
 import { ResourceError } from '@/components/control-plane/resource-states'
 import { ConfirmActionDialog } from '@/components/control-plane/confirm-action-dialog'
 import { StatusBadge } from '@/components/data/status-badge'
 import { Button } from '@/components/ui/button'
 import { ButtonGroup } from '@/components/ui/button-group'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Switch } from '@/components/ui/switch'
 import {
   BulkActions,
   SelectionSummary,
@@ -50,7 +53,6 @@ import { serverWorkspaceTabs } from '@/lib/navigation'
 import {
   runtimeIndependentInboundCatalog,
   runtimeInboundCatalog,
-  runtimeOutboundCatalog,
   runtimeRuleCatalog,
   runtimeXrayCatalog,
   publicationCatalog,
@@ -65,7 +67,6 @@ import type {
   Machine,
   RuntimeNode,
   XrayResource,
-  OutboundCandidate,
 } from '@/lib/control-plane/runtime-api'
 import {
   applicationError,
@@ -99,8 +100,72 @@ const rawCatalog: CatalogTab[] = [
     ],
   },
 ]
+
+function hasTag(value: unknown, tag: string) {
+  const values = Array.isArray(value) ? value : [value]
+  return values.some((item) => String(item) === tag)
+}
+
+function hasEveryTag(value: unknown, tags: string[]) {
+  return tags.every((tag) => hasTag(value, tag))
+}
+
+const ruleConditionLabels: Record<string, string> = {
+  sourceIP: '源 IP',
+  localIP: '本地 IP',
+  sourcePort: '源端口',
+  localPort: '本地端口',
+  vlessRoute: 'VLESS 端口',
+  network: '网络',
+  protocol: '协议',
+  ip: '目标 IP',
+  domain: '目标域名',
+  user: '用户',
+  process: '进程',
+  inboundTag: '入站',
+  attrs: '属性',
+  port: '目标端口',
+  ruleTag: '规则标签',
+  webhook: 'Webhook',
+}
+
+function formatRuleConditionValue(value: unknown) {
+  if (Array.isArray(value)) return value.map(String).join(', ')
+  if (value && typeof value === 'object') return JSON.stringify(value)
+  return String(value)
+}
+
+function describeRuleConditions(rule: JsonObject) {
+  return (
+    Object.entries(rule)
+      .filter(
+        ([key, value]) =>
+          !['type', 'outboundTag', 'balancerTag', 'enabled'].includes(key) &&
+          value !== null &&
+          value !== '' &&
+          (!Array.isArray(value) || value.length > 0),
+      )
+      .map(
+        ([key, value]) =>
+          `${ruleConditionLabels[key] ?? key}: ${formatRuleConditionValue(value)}`,
+      )
+      .join(' · ') || '全部流量'
+  )
+}
+
+function hasRuleMatch(rule: JsonObject) {
+  return Object.entries(rule).some(([key, value]) => {
+    if (['type', 'outboundTag', 'balancerTag', 'enabled', 'ruleTag', 'webhook'].includes(key))
+      return false
+    if (typeof value === 'string') return value.trim() !== ''
+    if (Array.isArray(value)) return value.length > 0
+    if (value && typeof value === 'object') return Object.keys(value).length > 0
+    return value !== null && value !== undefined
+  })
+}
+
 type Editor = {
-  kind: 'outbound' | 'rule' | 'raw' | 'defaults' | 'independent-inbound'
+  kind: 'rule' | 'raw' | 'defaults' | 'independent-inbound'
   index?: number
   value: JsonObject
 } | null
@@ -127,32 +192,19 @@ export function ServerWorkspacePage() {
       [api, machineId],
     ),
   )
-  const candidates = useAdminQuery(
-    React.useCallback(
-      (signal) =>
-        api.get<OutboundCandidate[]>(
-          'server/outbound/fetch',
-          undefined,
-          signal,
-        ),
-      [api],
-    ),
-  )
   const nodes = query.data?.nodes ?? []
   const selected = Number(search.get('instance'))
   const node = nodes.find((item) => item.id === selected) ?? nodes[0]
   const [createNode, setCreateNode] = React.useState(false)
   const [editNode, setEditNode] = React.useState(false)
+  const [ruleFilesOpen, setRuleFilesOpen] = React.useState(false)
   const [editor, setEditor] = React.useState<Editor>(null)
   const [remove, setRemove] = React.useState<{
-    kind: 'outbound' | 'rule' | 'independent-inbound'
+    kind: 'rule' | 'independent-inbound'
     index: number
   } | null>(null)
-  const [bindingId, setBindingId] = React.useState('')
   const [bulkRunning, setBulkBusy] = React.useState(false)
-  const [conversion, setConversion] = React.useState<
-    'shared' | 'private' | null
-  >(null)
+  const [defaultOutboundBusy, setDefaultOutboundBusy] = React.useState(false)
   const resource = useAdminQuery(
     React.useCallback(
       (signal) =>
@@ -181,14 +233,11 @@ export function ServerWorkspacePage() {
   const bulkBusy =
     bulkRunning ||
     resource.loading ||
-    resource.refreshing ||
-    candidates.loading ||
-    candidates.refreshing
+    resource.refreshing
   const config = snapshot?.xray_config ?? {}
   const effective = snapshot?.effective_config ?? {}
   const reload = () => {
     query.reload()
-    candidates.reload()
     resource.reload()
   }
   async function save(
@@ -287,66 +336,100 @@ export function ServerWorkspacePage() {
         : undefined,
     )
   }
-  const bound = Boolean(snapshot?.outbound_bindings.length)
-  const outbounds: JsonObject[] = bound
-    ? snapshot!.outbound_bindings.map((binding) => {
-        const candidate = candidates.data?.find(
-          (item) => item.id === binding.outbound_id,
-        )
-        return {
-          ...candidate?.config,
-          tag: binding.tag || candidate?.config.tag,
-          bindingEnabled: binding.enabled !== false,
-        }
-      })
-    : ((effective.outbounds as JsonObject[] | undefined) ?? [])
   const independentInbounds =
     (effective.inbounds as JsonObject[] | undefined)?.slice(1) ?? []
   const rules =
     (object(effective.routing).rules as JsonObject[] | undefined) ?? []
-  async function updateList(
-    kind: 'outbound' | 'rule',
-    list: JsonObject[],
-    checkOnly = false,
-  ) {
-    if (kind === 'outbound') {
-      if (bound) throw new Error('请先转为实例独立出站')
-      await (checkOnly ? validate : save)({ ...config, outbounds: list }, [])
-    } else
-      await (checkOnly ? validate : save)({
-        ...config,
-        routing: { ...object(effective.routing), rules: list },
-      })
+  const effectiveOutbounds =
+    (effective.outbounds as JsonObject[] | undefined) ?? []
+  const defaultOutboundTag = String(
+    snapshot?.default_outbound_tag ?? 'direct',
+  )
+  const defaultOutboundOptions: Array<{ tag: string; protocol: string }> = []
+  const seenDefaultOutboundTags = new Set<string>()
+  for (const outbound of [
+    { tag: 'direct', protocol: 'freedom' },
+    ...effectiveOutbounds,
+  ]) {
+    const tag = String(outbound.tag ?? '').trim()
+    if (!tag || tag === 'api' || seenDefaultOutboundTags.has(tag)) continue
+    seenDefaultOutboundTags.add(tag)
+    defaultOutboundOptions.push({
+      tag,
+      protocol: String(outbound.protocol ?? ''),
+    })
   }
-  async function move(
-    kind: 'outbound' | 'rule',
-    index: number,
-    direction: number,
-  ) {
-    if (kind === 'outbound' && bound && snapshot) {
-      const bindings = [...snapshot.outbound_bindings]
-      if (index + direction < 0 || index + direction >= bindings.length) return
-      ;[bindings[index], bindings[index + direction]] = [
-        bindings[index + direction],
-        bindings[index],
-      ]
-      try {
-        await save(config, bindings)
-      } catch (error) {
-        toast.error(getErrorMessage(error))
-      }
-      return
-    }
-    const list = [...(kind === 'outbound' ? outbounds : rules)]
-    if (index + direction < 0 || index + direction >= list.length) return
-    ;[list[index], list[index + direction]] = [
-      list[index + direction],
-      list[index],
-    ]
+  const apiRuleIndex = rules.findIndex(
+    (rule) =>
+      hasTag(rule.inboundTag, 'api') && String(rule.outboundTag ?? '') === 'api',
+  )
+  const mainlandIPRuleIndex = rules.findIndex(
+    (rule) =>
+      String(rule.outboundTag ?? '') === 'block' && hasTag(rule.ip, 'geoip:cn'),
+  )
+  const mainlandDomainRuleIndex = rules.findIndex(
+    (rule) =>
+      String(rule.outboundTag ?? '') === 'block' &&
+      hasEveryTag(rule.domain, [
+        'geosite:cn',
+        'domain:googleapis.cn',
+        'domain:google.cn',
+        'geosite:google-play@cn',
+        'domain:ping0.cc',
+      ]),
+  )
+  const systemRuleIndexes = new Set(
+    [apiRuleIndex, mainlandIPRuleIndex, mainlandDomainRuleIndex].filter(
+      (index) => index >= 0,
+    ),
+  )
+  const manageableRuleIndexes = rules
+    .map((_, index) => index)
+    .filter((index) => index !== apiRuleIndex)
+  async function updateRules(list: JsonObject[], checkOnly = false) {
+    await (checkOnly ? validate : save)({
+      ...config,
+      routing: { ...object(effective.routing), rules: list },
+    })
+  }
+  async function moveRule(index: number, direction: number) {
+    const position = manageableRuleIndexes.indexOf(index)
+    const targetIndex = manageableRuleIndexes[position + direction]
+    if (position < 0 || targetIndex === undefined) return
+    const list = [...rules]
+    ;[list[index], list[targetIndex]] = [list[targetIndex], list[index]]
     try {
-      await updateList(kind, list)
+      await updateRules(list)
     } catch (error) {
       toast.error(getErrorMessage(error))
+    }
+  }
+  async function toggleRule(index: number, enabled: boolean) {
+    const list = [...rules]
+    if (!list[index]) return
+    list[index] = { ...list[index], enabled }
+    try {
+      await updateRules(list)
+      toast.success(enabled ? '路由规则已启用' : '路由规则已停用')
+    } catch (error) {
+      toast.error(getErrorMessage(error))
+    }
+  }
+  async function changeDefaultOutbound(tag: string) {
+    if (!node || !snapshot || tag === defaultOutboundTag) return
+    setDefaultOutboundBusy(true)
+    try {
+      await api.post<XrayResource>('server/xray/default-outbound', {
+        node_id: node.id,
+        expected_revision: snapshot.config_revision,
+        default_outbound_tag: tag,
+      })
+      resource.reload()
+      toast.success(`默认出站已切换为 ${tag}`)
+    } catch (error) {
+      toast.error(getErrorMessage(error))
+    } finally {
+      setDefaultOutboundBusy(false)
     }
   }
   async function saveEditor(value: JsonObject, checkOnly = false) {
@@ -381,10 +464,12 @@ export function ServerWorkspacePage() {
       )
       return
     }
-    const list = [...(editor.kind === 'outbound' ? outbounds : rules)]
+    if (!hasRuleMatch(value))
+      throw new Error('请至少配置一个匹配条件；未命中流量由默认出站处理。')
+    const list = [...rules]
     if (editor.index === undefined) list.push(value)
     else list[editor.index] = value
-    await updateList(editor.kind, list, checkOnly)
+    await updateRules(list, checkOnly)
   }
   const applied = snapshot?.application
   const appliedCurrent =
@@ -396,12 +481,19 @@ export function ServerWorkspacePage() {
       Number(applied.desired_revision) === snapshot?.config_revision,
   )
   const machine = query.data?.machine
-  const handledFailure = React.useRef('')
+  const handledFailure = React.useRef<string | undefined>(undefined)
   React.useEffect(() => {
-    if (!failed || !node || !applied) return
+    if (!node || !applied) return
     const path = String(applied.error_path ?? '').replace(/\[(\d+)\]/g, '.$1')
-    const marker = `${node.id}:${applied.desired_revision}:${path}`
-    if (handledFailure.current === marker) return
+    const marker = `${node.id}:${applied.status}:${applied.desired_revision}:${path}`
+    if (handledFailure.current === undefined) {
+      handledFailure.current = marker
+      return
+    }
+    if (!failed || handledFailure.current === marker) {
+      handledFailure.current = marker
+      return
+    }
     handledFailure.current = marker
     const inbound = path.match(/^xray_config\.inbounds\.(\d+)/)
     const outbound = path.match(/^xray_config\.outbounds\.(\d+)/)
@@ -411,12 +503,12 @@ export function ServerWorkspacePage() {
       : inbound
         ? 'inbounds'
         : outbound
-          ? 'outbounds'
+          ? 'xray-config'
           : rule
             ? 'routing'
             : 'xray-config'
     void navigate(`/servers/${machineId}/${route}?instance=${node.id}`)
-    const index = Number(inbound?.[1] ?? outbound?.[1] ?? rule?.[1])
+    const index = Number(inbound?.[1] ?? rule?.[1])
     const timer = window.setTimeout(() => {
       if (inbound && index > 0 && independentInbounds[index - 1])
         setEditor({
@@ -424,32 +516,26 @@ export function ServerWorkspacePage() {
           index: index - 1,
           value: independentInbounds[index - 1],
         })
-      else if (outbound && !bound && outbounds[index])
-        setEditor({ kind: 'outbound', index, value: outbounds[index] })
+      else if (outbound) setEditor({ kind: 'raw', value: { config } })
       else if (rule && rules[index])
         setEditor({ kind: 'rule', index, value: rules[index] })
     })
     return () => window.clearTimeout(timer)
-    // This effect is keyed by the immutable failure receipt. The list
-    // projections come from the same render and only identify its target row.
+    // Ignore the receipt already present when the workspace mounts. A later
+    // immutable failure receipt can still focus the field that just failed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [applied, failed, machineId, navigate, node?.id])
   const runtimeIssues = failed ? applicationFieldErrors(applied) : undefined
-  const listKind = active === 'outbounds' ? 'outbound' : 'rule'
-  const list = active === 'outbounds' ? outbounds : rules
   const selectionScope = `${node?.id}:${active}:${snapshot?.config_revision}`
   const inboundRows = independentInbounds.map((item, index) => ({
     id: index + 1,
     item,
   }))
   const inboundSelection = useListSelection(inboundRows, selectionScope)
-  const listRows = list
-    .map((item, index) => ({ id: index + 1, item }))
-    .filter(
-      ({ item }) =>
-        listKind !== 'outbound' ||
-        !['direct', 'block'].includes(String(item.tag)),
-    )
+  const listRows = manageableRuleIndexes.map((index) => ({
+    id: index + 1,
+    item: rules[index],
+  }))
   const listSelection = useListSelection(listRows, selectionScope)
   return (
     <div className="mx-auto w-full max-w-[1600px]">
@@ -569,13 +655,6 @@ export function ServerWorkspacePage() {
           title="配置加载失败"
           message={resource.error}
           onRetry={resource.reload}
-        />
-      )}
-      {active === 'outbounds' && candidates.error && (
-        <ResourceError
-          title="共享出站加载失败"
-          message={candidates.error}
-          onRetry={candidates.reload}
         />
       )}
       {failed && applied && (
@@ -861,6 +940,12 @@ export function ServerWorkspacePage() {
                   <ButtonGroup>
                     <Button
                       variant="outline"
+                      onClick={() => setRuleFilesOpen(true)}
+                    >
+                      规则文件管理
+                    </Button>
+                    <Button
+                      variant="outline"
                       onClick={() =>
                         setEditor({
                           kind: 'defaults',
@@ -888,25 +973,32 @@ export function ServerWorkspacePage() {
                 }}
               />
             )}
-            {(active === 'outbounds' || active === 'routing') && (
+            {active === 'fallback' && (
+              <FallbackSiteEditor
+                key={'fallback-' + node.id + '-' + snapshot.config_revision}
+                node={node}
+                effectiveInbound={snapshot.effective_inbound}
+                onSave={(value) => saveNode({ fallback_site: value })}
+              />
+            )}
+            {active === 'routing' && (
               <Card className="gap-0 overflow-hidden py-0">
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b p-3">
-                  <div className="text-sm text-muted-foreground">
-                    {active === 'outbounds'
-                      ? '未匹配路由的连接使用首个出站。'
-                      : '按顺序首条匹配；同一规则内条件为 AND。'}
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b p-4">
+                  <div>
+                    <div className="font-medium">规则列表</div>
+                    <p className="text-sm text-muted-foreground">
+                      按顺序首条匹配；同一规则内条件为 AND。来源列区分系统维护规则和用户新增规则，未命中时使用默认出站。
+                    </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <BulkActions
                       selected={listSelection.selectedRows}
                       scope={selectionScope}
                       getLabel={({ id, item }) =>
-                        listKind === 'outbound'
-                          ? String(item.tag)
-                          : '规则 ' +
-                            id +
-                            ' · ' +
-                            String(item.outboundTag ?? item.balancerTag ?? '')
+                        '规则 ' +
+                        id +
+                        ' · ' +
+                        String(item.outboundTag ?? item.balancerTag ?? '')
                       }
                       disabled={resource.loading || resource.refreshing}
                       onBusyChange={setBulkBusy}
@@ -917,131 +1009,40 @@ export function ServerWorkspacePage() {
                       actions={[
                         {
                           id: 'delete',
-                          label:
-                            listKind === 'outbound'
-                              ? bound
-                                ? '解除出站绑定'
-                                : '删除实例出站'
-                              : '删除路由规则',
+                          label: '删除规则',
                           description:
-                            listKind === 'outbound'
-                              ? '移除所选出站。仍被路由或负载均衡引用的配置需先调整引用。'
-                              : '删除所选规则，后续连接按剩余规则匹配。',
+                            '删除所选规则，后续连接按剩余规则匹配。内部 API 规则不会被选中。',
                           icon: Trash2,
                           destructive: true,
                           runAll: (items) => {
                             const ids = new Set(items.map((item) => item.id))
-                            return listKind === 'outbound' && bound
-                              ? save(
-                                  config,
-                                  snapshot.outbound_bindings.filter(
-                                    (_, index) => !ids.has(index + 1),
-                                  ),
-                                )
-                              : updateList(
-                                  listKind,
-                                  list.filter(
-                                    (_, index) => !ids.has(index + 1),
-                                  ),
-                                )
+                            return updateRules(
+                              rules.filter((_, index) => !ids.has(index + 1)),
+                            )
                           },
                         },
                       ]}
                     />
                     <Button
-                      disabled={bulkBusy || (listKind === 'outbound' && bound)}
+                      disabled={bulkBusy}
                       onClick={() =>
                         setEditor({
-                          kind: listKind,
-                          value:
-                            listKind === 'outbound'
-                              ? { tag: '', protocol: 'freedom', settings: {} }
-                              : { type: 'field', outboundTag: 'direct' },
+                          kind: 'rule',
+                          value: { type: 'field', outboundTag: 'direct' },
                         })
                       }
                     >
                       <Plus data-icon="inline-start" />
-                      {listKind === 'outbound' ? '新增实例出站' : '新增规则'}
+                      新增规则
                     </Button>
                   </div>
                 </div>
-                {active === 'outbounds' && (
-                  <div className="flex flex-wrap items-center gap-2 border-b p-3">
-                    <Select value={bindingId} onValueChange={setBindingId}>
-                      <SelectTrigger
-                        aria-label="共享出站候选"
-                        className="w-full sm:w-72"
-                      >
-                        <SelectValue placeholder="从共享出站库绑定" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectGroup>
-                          {candidates.data
-                            ?.filter((item) => item.enabled)
-                            .map((item) => (
-                              <SelectItem key={item.id} value={String(item.id)}>
-                                {item.name}
-                              </SelectItem>
-                            ))}
-                        </SelectGroup>
-                      </SelectContent>
-                    </Select>
-                    <Button
-                      variant="outline"
-                      disabled={
-                        bulkBusy ||
-                        !bindingId ||
-                        Array.isArray(config.outbounds)
-                      }
-                      onClick={() =>
-                        void (async () => {
-                          try {
-                            const candidate = candidates.data?.find(
-                              (item) => item.id === Number(bindingId),
-                            )
-                            await save(config, [
-                              ...snapshot.outbound_bindings,
-                              {
-                                outbound_id: Number(bindingId),
-                                tag: String(candidate?.config.tag ?? ''),
-                                enabled: true,
-                              },
-                            ])
-                            setBindingId('')
-                          } catch (error) {
-                            toast.error(getErrorMessage(error))
-                          }
-                        })()
-                      }
-                    >
-                      绑定候选
-                    </Button>
-                    {Array.isArray(config.outbounds) && (
-                      <Button
-                        variant="ghost"
-                        disabled={bulkBusy}
-                        onClick={() => setConversion('shared')}
-                      >
-                        改用共享绑定
-                      </Button>
-                    )}
-                    {bound && (
-                      <Button
-                        variant="ghost"
-                        disabled={bulkBusy}
-                        onClick={() => setConversion('private')}
-                      >
-                        转为实例独立出站
-                      </Button>
-                    )}
-                  </div>
-                )}
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-12">
                         <Checkbox
-                          aria-label="选择当前配置项"
+                          aria-label="选择全部可管理规则"
                           checked={listSelection.checked}
                           disabled={bulkBusy || !listRows.length}
                           onCheckedChange={(checked) =>
@@ -1050,183 +1051,220 @@ export function ServerWorkspacePage() {
                         />
                       </TableHead>
                       <TableHead>顺序</TableHead>
-                      <TableHead>
-                        {listKind === 'outbound' ? 'Tag / 协议' : '匹配条件'}
-                      </TableHead>
-                      <TableHead>
-                        {listKind === 'outbound' ? '类型' : '目标'}
-                      </TableHead>
+                      <TableHead>来源</TableHead>
+                      <TableHead>匹配条件</TableHead>
+                      <TableHead>目标</TableHead>
+                      <TableHead>启用</TableHead>
                       <TableHead className="text-right">操作</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {list.map((item, index) => (
-                      <TableRow
-                        key={index}
-                        data-state={
-                          listSelection.selectedIds.has(index + 1)
-                            ? 'selected'
-                            : undefined
-                        }
-                      >
-                        <TableCell>
-                          <Checkbox
-                            aria-label={'选择配置项 ' + (index + 1)}
-                            checked={listSelection.selectedIds.has(index + 1)}
-                            disabled={
-                              bulkBusy ||
-                              !listRows.some((row) => row.id === index + 1)
-                            }
-                            onCheckedChange={(checked) =>
-                              listSelection.toggle(index + 1, checked === true)
-                            }
-                          />
-                        </TableCell>
-                        <TableCell className="font-data">{index + 1}</TableCell>
-                        <TableCell>
-                          {listKind === 'outbound' ? (
-                            <>
-                              {String(item.tag)}{' '}
-                              <span className="text-muted-foreground">
-                                {String(item.protocol)}
-                              </span>
-                            </>
-                          ) : (
+                    {rules.map((item, index) => {
+                      const isSystem = systemRuleIndexes.has(index)
+                      const isLockedSystem = index === apiRuleIndex
+                      const manageablePosition =
+                        manageableRuleIndexes.indexOf(index)
+                      return (
+                        <TableRow
+                          key={index}
+                          data-state={
+                            !isLockedSystem &&
+                            listSelection.selectedIds.has(index + 1)
+                              ? 'selected'
+                              : undefined
+                          }
+                        >
+                          <TableCell>
+                            <Checkbox
+                              aria-label={
+                                isLockedSystem
+                                  ? `规则 ${index + 1} 由系统维护`
+                                  : `选择规则 ${index + 1}`
+                              }
+                              checked={
+                                !isLockedSystem &&
+                                listSelection.selectedIds.has(index + 1)
+                              }
+                              disabled={bulkBusy || isLockedSystem}
+                              onCheckedChange={(checked) =>
+                                listSelection.toggle(index + 1, checked === true)
+                              }
+                            />
+                          </TableCell>
+                          <TableCell className="font-data">
+                            {index + 1}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={isSystem ? 'secondary' : 'outline'}>
+                              {isSystem ? '系统' : '用户'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
                             <span className="text-xs">
-                              {Object.keys(item)
-                                .filter(
-                                  (key) =>
-                                    ![
-                                      'type',
-                                      'outboundTag',
-                                      'balancerTag',
-                                    ].includes(key),
-                                )
-                                .map((key) => key + ': ' + String(item[key]))
-                                .join(' · ') || '全部流量'}
+                              {describeRuleConditions(item)}
                             </span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {listKind === 'outbound' ? (
-                            index === 0 ? (
-                              <Badge variant="secondary">默认出口</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">
+                              {String(
+                                item.outboundTag ??
+                                  item.balancerTag ??
+                                  '未设置',
+                              )}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Switch
+                                size="sm"
+                                aria-label={`规则 ${index + 1} 启用状态`}
+                                checked={item.enabled !== false}
+                                disabled={bulkBusy || isLockedSystem}
+                                onCheckedChange={(checked) =>
+                                  void toggleRule(index, checked)
+                                }
+                              />
+                              <span className="text-xs text-muted-foreground">
+                                {isLockedSystem
+                                  ? '固定启用'
+                                  : item.enabled !== false
+                                    ? '启用'
+                                    : '停用'}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {isLockedSystem ? (
+                              <Badge variant="secondary">系统维护</Badge>
                             ) : (
-                              '出站'
-                            )
-                          ) : (
-                            String(item.outboundTag ?? item.balancerTag ?? '')
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <ButtonGroup
-                            className="ml-auto"
-                            aria-label={'配置项 ' + (index + 1) + ' 操作'}
-                          >
-                            <Button
-                              aria-label="上移"
-                              variant="outline"
-                              size="icon-sm"
-                              disabled={bulkBusy || index === 0}
-                              onClick={() => void move(listKind, index, -1)}
-                            >
-                              <ArrowUp />
-                            </Button>
-                            <Button
-                              aria-label="下移"
-                              variant="outline"
-                              size="icon-sm"
-                              disabled={bulkBusy || index === list.length - 1}
-                              onClick={() => void move(listKind, index, 1)}
-                            >
-                              <ArrowDown />
-                            </Button>
-                            {listKind === 'outbound' && bound ? (
-                              <>
-                                <Button asChild variant="outline" size="sm">
-                                  <Link to="/outbounds">编辑共享出站</Link>
+                              <ButtonGroup
+                                className="ml-auto"
+                                aria-label={'规则 ' + (index + 1) + ' 操作'}
+                              >
+                                <Button
+                                  aria-label="上移"
+                                  variant="outline"
+                                  size="icon-sm"
+                                  disabled={
+                                    bulkBusy || manageablePosition <= 0
+                                  }
+                                  onClick={() => void moveRule(index, -1)}
+                                >
+                                  <ArrowUp />
+                                </Button>
+                                <Button
+                                  aria-label="下移"
+                                  variant="outline"
+                                  size="icon-sm"
+                                  disabled={
+                                    bulkBusy ||
+                                    manageablePosition ===
+                                      manageableRuleIndexes.length - 1
+                                  }
+                                  onClick={() => void moveRule(index, 1)}
+                                >
+                                  <ArrowDown />
                                 </Button>
                                 <Button
                                   variant="outline"
                                   size="sm"
                                   disabled={bulkBusy}
                                   onClick={() =>
-                                    void save(
-                                      config,
-                                      snapshot.outbound_bindings.map(
-                                        (binding, i) =>
-                                          i === index
-                                            ? {
-                                                ...binding,
-                                                enabled:
-                                                  binding.enabled === false,
-                                              }
-                                            : binding,
-                                      ),
-                                    ).catch((error) =>
-                                      toast.error(getErrorMessage(error)),
-                                    )
+                                    setEditor({
+                                      kind: 'rule',
+                                      index,
+                                      value: item,
+                                    })
                                   }
                                 >
-                                  {item.bindingEnabled ? '停用' : '启用'}
+                                  编辑
                                 </Button>
-                              </>
-                            ) : (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={bulkBusy}
-                                onClick={() =>
-                                  setEditor({
-                                    kind: listKind,
-                                    index,
-                                    value: item,
-                                  })
-                                }
-                              >
-                                编辑
-                              </Button>
+                                <Button
+                                  aria-label="删除"
+                                  variant="outline"
+                                  size="icon-sm"
+                                  className="text-destructive hover:text-destructive"
+                                  disabled={bulkBusy}
+                                  onClick={() =>
+                                    setRemove({ kind: 'rule', index })
+                                  }
+                                >
+                                  <Trash2 />
+                                </Button>
+                              </ButtonGroup>
                             )}
-                            <Button
-                              aria-label="删除"
-                              variant="outline"
-                              size="icon-sm"
-                              className="text-destructive hover:text-destructive"
-                              disabled={
-                                bulkBusy ||
-                                (listKind === 'outbound' &&
-                                  ['direct', 'block'].includes(
-                                    String(item.tag),
-                                  ))
-                              }
-                              onClick={() =>
-                                setRemove({ kind: listKind, index })
-                              }
-                            >
-                              <Trash2 />
-                            </Button>
-                          </ButtonGroup>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {list.length === 0 && (
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                    {rules.length === 0 && (
                       <TableRow>
                         <TableCell
-                          colSpan={5}
+                          colSpan={7}
                           className="h-24 text-center text-muted-foreground"
                         >
-                          {listKind === 'outbound'
-                            ? '尚未配置自定义出站，默认使用系统 direct'
-                            : '尚未配置路由规则'}
+                          尚未配置匹配规则；未命中流量将使用表中的默认出站。
                         </TableCell>
                       </TableRow>
                     )}
+                    <TableRow>
+                      <TableCell>
+                        <Checkbox aria-label="默认兜底路径" disabled />
+                      </TableCell>
+                      <TableCell className="font-data">默认</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">系统</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="font-medium">未命中任何规则</div>
+                        <div className="text-xs text-muted-foreground">
+                          位于规则列表末尾，使用此节点选择的默认出站。
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          value={defaultOutboundTag}
+                          disabled={defaultOutboundBusy || resource.refreshing}
+                          onValueChange={(tag) =>
+                            void changeDefaultOutbound(tag)
+                          }
+                        >
+                          <SelectTrigger
+                            className="w-[11rem]"
+                            aria-label="修改节点默认出站"
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectGroup>
+                              {defaultOutboundOptions.map((outbound) => (
+                                <SelectItem
+                                  key={outbound.tag}
+                                  value={outbound.tag}
+                                >
+                                  {outbound.tag}
+                                  {outbound.protocol
+                                    ? ` · ${outbound.protocol}`
+                                    : ''}
+                                </SelectItem>
+                              ))}
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge tone="info" label="生效路径" />
+                      </TableCell>
+                      <TableCell className="text-right text-xs text-muted-foreground">
+                        表内修改
+                      </TableCell>
+                    </TableRow>
                   </TableBody>
                 </Table>
                 <div className="border-t px-4 py-3">
                   <SelectionSummary
                     selected={listSelection.count}
-                    total={listRows.length}
+                    total={rules.length}
                     onClear={listSelection.clear}
                   />
                 </div>
@@ -1253,18 +1291,14 @@ export function ServerWorkspacePage() {
           tabs={
             editor.kind === 'independent-inbound'
               ? runtimeIndependentInboundCatalog
-              : editor.kind === 'outbound'
-                ? runtimeOutboundCatalog
-                : editor.kind === 'rule'
-                  ? runtimeRuleCatalog
-                  : rawCatalog
+              : editor.kind === 'rule'
+                ? runtimeRuleCatalog
+                : rawCatalog
           }
           kind={
             editor.kind === 'independent-inbound'
               ? 'independent-inbound'
-              : editor.kind === 'outbound'
-                ? 'outbound'
-                : ''
+              : ''
           }
           value={editor.value}
           context={
@@ -1282,51 +1316,28 @@ export function ServerWorkspacePage() {
           title={
             editor.kind === 'independent-inbound'
               ? '独立入站'
-              : editor.kind === 'outbound'
-                ? '出站配置'
-                : editor.kind === 'rule'
-                  ? '路由规则'
-                  : editor.kind === 'defaults'
-                    ? '服务器 Xray 默认值'
-                    : '高级配置'
+              : editor.kind === 'rule'
+                ? '路由规则'
+                : editor.kind === 'defaults'
+                  ? '服务器 Xray 默认值'
+                  : '高级配置'
           }
           onSave={saveEditor}
           onValidate={(value) => saveEditor(value, true)}
           errorPrefix={
             editor.kind === 'independent-inbound'
               ? `xray_config.inbounds.${(editor.index ?? independentInbounds.length) + 1}`
-              : editor.kind === 'outbound'
-                ? `xray_config.outbounds.${editor.index ?? outbounds.length}`
-                : editor.kind === 'rule'
-                  ? `xray_config.routing.rules.${editor.index ?? rules.length}`
-                  : 'xray_config'
+              : editor.kind === 'rule'
+                ? `xray_config.routing.rules.${editor.index ?? rules.length}`
+                : 'xray_config'
           }
           initialIssues={runtimeIssues}
         />
       )}
-      <ConfirmActionDialog
-        open={Boolean(conversion)}
-        onOpenChange={(open) => !open && setConversion(null)}
-        title={conversion === 'private' ? '转为实例独立出站' : '改用共享绑定'}
-        description={
-          conversion === 'private'
-            ? '保留当前出站配置，之后不再跟随共享出站更新。'
-            : '清除当前实例的独立出站列表，再从共享出站库选择。引用这些出站的规则需要先移除。'
-        }
-        onConfirm={async () => {
-          try {
-            if (conversion === 'private')
-              await save({ ...config, outbounds: effective.outbounds }, [])
-            else {
-              const next = { ...config }
-              delete next.outbounds
-              await save(next, [])
-            }
-            setConversion(null)
-          } catch (error) {
-            toast.error(getErrorMessage(error))
-          }
-        }}
+      <RuleFilesManagerDialog
+        nodeId={node?.id}
+        open={ruleFilesOpen}
+        onOpenChange={setRuleFilesOpen}
       />
       <ConfirmActionDialog
         open={Boolean(remove)}
@@ -1346,19 +1357,9 @@ export function ServerWorkspacePage() {
                   ),
                 ),
               )
-            else if (remove.kind === 'outbound' && bound && snapshot)
-              await save(
-                config,
-                snapshot.outbound_bindings.filter(
-                  (_, index) => index !== remove.index,
-                ),
-              )
             else
-              await updateList(
-                remove.kind,
-                (remove.kind === 'outbound' ? outbounds : rules).filter(
-                  (_, index) => index !== remove.index,
-                ),
+              await updateRules(
+                rules.filter((_, index) => index !== remove.index),
               )
             setRemove(null)
           } catch (error) {

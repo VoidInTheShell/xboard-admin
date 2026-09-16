@@ -7,6 +7,7 @@ function setting(group: string, backendKey: string, definition: SettingDefinitio
     ...definition,
     key: `${group}.${backendKey}`,
     backendKey,
+    sourceGroup: group,
   }
 }
 
@@ -30,7 +31,7 @@ export const systemSettingsCatalog: CatalogTab[] = [
         setting("site", "app_name", { label: "站点名称", control: "text", required: true, defaultValue: "XBoard" }),
         setting("site", "app_url", { label: "站点网址", control: "text", placeholder: "https://example.com" }),
         setting("site", "app_description", { label: "站点描述", control: "textarea", rows: 4, span: 2 }),
-        setting("site", "logo", { label: "Logo URL", control: "text", placeholder: "https://example.com/logo.png" }),
+        setting("site", "logo", { label: "站点 Logo", control: "text", placeholder: "https://example.com/logo.png", span: 2, description: "用于用户后台与管理后台的品牌标识。可填写图片链接，或上传并裁剪图片。" }),
         setting("site", "subscribe_url", { label: "订阅 URL", control: "text", description: "留空时由站点网址和订阅路径组合生成。" }),
         setting("site", "tos_url", { label: "用户条款 URL", control: "text" }),
         setting("site", "currency", { label: "货币单位", control: "text", defaultValue: "CNY" }),
@@ -162,36 +163,52 @@ export const systemSettingsCatalog: CatalogTab[] = [
     }],
   },
   {
-    id: "app",
-    title: "客户端版本",
-    description: "向用户端公布官方客户端下载地址和版本号。",
-    sections: [{
-      id: "app-downloads",
-      title: "官方客户端下载",
-      fields: [
-        setting("app", "windows_version", { label: "Windows 版本", control: "text" }),
-        setting("app", "windows_download_url", { label: "Windows 下载地址", control: "text" }),
-        setting("app", "macos_version", { label: "macOS 版本", control: "text" }),
-        setting("app", "macos_download_url", { label: "macOS 下载地址", control: "text" }),
-        setting("app", "android_version", { label: "Android 版本", control: "text" }),
-        setting("app", "android_download_url", { label: "Android 下载地址", control: "text" }),
-      ],
-    }],
-  },
-  {
     id: "frontend",
-    title: "用户端主题",
-    description: "选择已安装主题并调整原版 XBoard 支持的布局外观枚举。",
+    title: "主题控制",
+    description: "按前端分别管理外观、登录页面与菜单。站点名称、Logo 和描述统一使用站点配置。",
     sections: [{
-      id: "frontend-theme",
-      title: "主题与布局",
+      id: "user",
+      title: "用户后台",
+      description: "DK Theme 的登录页面、菜单和展示方式。",
+      fields: [
+        setting("frontend", "self_use_mode", { label: "自用模式", control: "switch", description: "隐藏首页补充指标，并向所有用户显示节点所属服务器的剩余流量。", span: 2 }),
+        setting("frontend", "user_login_title", { label: "登录页标题", control: "text", placeholder: "欢迎使用 {站点名称}", span: 2 }),
+        setting("frontend", "user_login_description", { label: "登录页描述", control: "textarea", description: "留空时使用通用站点描述。", span: 2 }),
+        setting("frontend", "user_hidden_menus", { label: "隐藏菜单", control: "multiselect", options: [
+          { value: "/usage", label: "使用记录" }, { value: "/leaderboard", label: "排行榜" },
+          { value: "/node-status", label: "节点状态" }, { value: "/invite", label: "邀请返利" },
+          { value: "/tickets", label: "工单支持" }, { value: "/knowledge", label: "帮助文档" },
+        ], description: "仅隐藏导航入口，不改变账户权限。", span: 2 }),
+        setting("frontend", "user_support_enabled", { label: "显示获取支持菜单", control: "switch", defaultValue: true, span: 2, description: "关闭后，用户后台侧栏不显示获取支持入口。" }),
+        setting("frontend", "user_support_description", { label: "支持说明", control: "textarea", defaultValue: "选择联系方式，或通过工单和帮助文档获取支持。", showWhen: { field: "frontend.user_support_enabled", equals: true } }),
+        setting("frontend", "user_support_telegram_label", { label: "客服 Telegram 名称", control: "text", placeholder: "@support", showWhen: { field: "frontend.user_support_enabled", equals: true } }),
+        setting("frontend", "user_support_telegram_url", { label: "客服 Telegram 链接", control: "text", placeholder: "https://t.me/support", showWhen: { field: "frontend.user_support_enabled", equals: true } }),
+        setting("frontend", "user_support_group_label", { label: "Telegram 群组名称", control: "text", showWhen: { field: "frontend.user_support_enabled", equals: true } }),
+        setting("frontend", "user_support_group_url", { label: "Telegram 群组链接", control: "text", placeholder: "https://t.me/group", showWhen: { field: "frontend.user_support_enabled", equals: true } }),
+        setting("frontend", "user_support_ticket_enabled", { label: "支持窗口显示工单入口", control: "switch", defaultValue: true, showWhen: { field: "frontend.user_support_enabled", equals: true } }),
+        setting("frontend", "user_support_knowledge_enabled", { label: "支持窗口显示帮助文档", control: "switch", defaultValue: true, showWhen: { field: "frontend.user_support_enabled", equals: true } }),
+      ],
+    }, {
+      id: "admin",
+      title: "管理后台",
+      description: "XAdmin 使用通用站点品牌；菜单调整仅影响管理后台。",
+      fields: [
+        setting("frontend", "admin_hidden_menus", { label: "隐藏菜单", control: "multiselect", options: [
+          { value: "/usage", label: "使用记录" }, { value: "/leaderboard", label: "排行榜" },
+          { value: "/commissions", label: "邀请与佣金" }, { value: "/knowledge", label: "知识库" },
+          { value: "/extensions", label: "主题与插件" },
+        ], description: "仅隐藏导航入口，不改变管理员权限。系统配置入口始终保留。", span: 2 }),
+      ],
+    }, {
+      id: "original",
+      title: "原版配置",
+      description: "管理原版主题的外观；这些选项不影响 DK Theme 和 XAdmin。",
       fields: [
         setting("frontend", "frontend_theme", { label: "当前主题", control: "select", required: true, options: [] }),
         setting("frontend", "frontend_theme_color", { label: "主题色", control: "select", defaultValue: "default", options: [{ value: "default", label: "默认" }, { value: "darkblue", label: "深蓝" }, { value: "black", label: "黑色" }, { value: "green", label: "绿色" }] }),
         setting("frontend", "frontend_theme_sidebar", { label: "侧栏外观", control: "select", defaultValue: "light", options: [{ value: "light", label: "浅色" }, { value: "dark", label: "深色" }] }),
         setting("frontend", "frontend_theme_header", { label: "顶栏外观", control: "select", defaultValue: "dark", options: [{ value: "light", label: "浅色" }, { value: "dark", label: "深色" }] }),
         setting("frontend", "frontend_background_url", { label: "背景图片 URL", control: "text", span: 2 }),
-        setting("frontend", "self_use_mode", { label: "自用模式", control: "switch" }),
       ],
     }],
   },

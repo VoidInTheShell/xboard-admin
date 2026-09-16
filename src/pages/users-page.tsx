@@ -1,3 +1,4 @@
+import { formatTrafficBytes } from "@/lib/traffic-format";
 import * as React from 'react'
 import {
   ClipboardList,
@@ -2190,13 +2191,7 @@ function localToEpoch(value: string) {
 }
 
 function formatBytes(value: number) {
-  if (!Number.isFinite(value) || value <= 0) return '0 GiB'
-  const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
-  const index = Math.min(
-    Math.floor(Math.log(value) / Math.log(1024)),
-    units.length - 1,
-  )
-  return `${(value / 1024 ** index).toFixed(index >= 3 ? 1 : 0)} ${units[index]}`
+  return formatTrafficBytes(value);
 }
 
 function percent(used: number, total: number) {

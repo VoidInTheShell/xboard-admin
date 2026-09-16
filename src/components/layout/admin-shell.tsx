@@ -1,4 +1,5 @@
 import { Outlet, useLocation } from "react-router-dom"
+import { useUsageVisit } from "@/lib/use-usage-visit"
 import { AdminSidebar } from "@/components/layout/admin-sidebar"
 import { AdminTopbar } from "@/components/layout/admin-topbar"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
@@ -13,6 +14,7 @@ export function AdminShell() {
 }
 
 function AdminShellContent() {
+  useUsageVisit()
   const location = useLocation()
   const { refreshToken } = useAdminChangeSync()
 

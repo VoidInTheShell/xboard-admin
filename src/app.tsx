@@ -8,6 +8,8 @@ import { useAuth } from "@/lib/auth"
 const DashboardPage = lazy(() =>
   import("@/pages/dashboard-page").then((module) => ({ default: module.DashboardPage })),
 )
+const UsagePage = lazy(() => import('@/pages/usage-page').then(module => ({ default: module.UsagePage })))
+const LeaderboardPage = lazy(() => import('@/pages/leaderboard-page').then(module => ({ default: module.LeaderboardPage })))
 const ServersPage = lazy(() =>
   import("@/pages/servers-page").then((module) => ({ default: module.ServersPage })),
 )
@@ -26,6 +28,7 @@ const PermissionGroupsPage = lazy(() =>
 const SubscriptionManagementPage = lazy(() =>
   import("@/pages/subscription-management-page").then((module) => ({ default: module.SubscriptionManagementPage })),
 )
+const ClientsPage = lazy(() => import("@/pages/clients-page").then(module => ({ default: module.ClientsPage })))
 const SettingsPage = lazy(() =>
   import("@/pages/settings-page").then((module) => ({ default: module.SettingsPage })),
 )
@@ -38,12 +41,7 @@ const NoticesPage = lazy(() =>
 const KnowledgePage = lazy(() =>
   import("@/pages/knowledge-page").then((module) => ({ default: module.KnowledgePage })),
 )
-const AuditLogsPage = lazy(() =>
-  import("@/pages/audit-logs-page").then((module) => ({ default: module.AuditLogsPage })),
-)
-const TrafficResetLogsPage = lazy(() =>
-  import("@/pages/traffic-reset-logs-page").then((module) => ({ default: module.TrafficResetLogsPage })),
-)
+const LogsPage = lazy(() => import("@/pages/logs-page").then((module) => ({ default: module.LogsPage })))
 const UsersPage = lazy(() =>
   import("@/pages/users-page").then((module) => ({ default: module.UsersPage })),
 )
@@ -62,9 +60,6 @@ const TicketsPage = lazy(() =>
 const GiftCardsPage = lazy(() =>
   import("@/pages/gift-cards-page").then((module) => ({ default: module.GiftCardsPage })),
 )
-const ClientsPage = lazy(() =>
-  import("@/pages/clients-page").then((module) => ({ default: module.ClientsPage })),
-)
 const MailPage = lazy(() =>
   import("@/pages/mail-page").then((module) => ({ default: module.MailPage })),
 )
@@ -77,6 +72,7 @@ const ExtensionsPage = lazy(() =>
 const LoginPage = lazy(() =>
   import("@/pages/login-page").then((module) => ({ default: module.LoginPage })),
 )
+const UpdatesPage = lazy(() => import("@/pages/updates-page").then(module => ({ default: module.UpdatesPage })))
 
 export function App() {
   return (
@@ -88,7 +84,10 @@ export function App() {
             <Route element={<AdminShell />}>
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="dashboard" element={<DashboardPage />} />
+              <Route path="usage" element={<UsagePage />} />
+              <Route path="leaderboard" element={<LeaderboardPage />} />
               <Route path="servers" element={<ServersPage />} />
+              <Route path="servers/:serverId/outbounds" element={<Navigate to="/outbounds" replace />} />
               <Route path="servers/:serverId/:section" element={<ServerWorkspacePage />} />
               <Route path="outbounds" element={<OutboundsPage />} />
               <Route path="nodes" element={<NodesPage />} />
@@ -98,8 +97,9 @@ export function App() {
               <Route path="plans" element={<PlansPage />} />
               <Route path="notices" element={<NoticesPage />} />
               <Route path="knowledge" element={<KnowledgePage />} />
-              <Route path="audit-logs" element={<AuditLogsPage />} />
-              <Route path="traffic-reset-logs" element={<TrafficResetLogsPage />} />
+              <Route path="logs" element={<LogsPage />} />
+              <Route path="audit-logs" element={<LegacyLogRedirect section="audit" />} />
+              <Route path="traffic-reset-logs" element={<LegacyLogRedirect section="reset" />} />
               <Route path="users" element={<UsersPage />} />
               <Route path="orders" element={<OrdersPage />} />
               <Route path="commissions" element={<CommissionsPage />} />
@@ -110,6 +110,7 @@ export function App() {
               <Route path="mail" element={<MailPage />} />
               <Route path="payments" element={<PaymentsPage />} />
               <Route path="extensions" element={<ExtensionsPage />} />
+              <Route path="updates" element={<UpdatesPage />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
@@ -125,6 +126,13 @@ function RequireAdmin() {
   const location = useLocation()
   if (!session) return <Navigate to="/login" replace state={{ from: { pathname: location.pathname } }} />
   return <Outlet />
+}
+
+function LegacyLogRedirect({ section }: { section: string }) {
+  const location = useLocation()
+  const params = new URLSearchParams(location.search)
+  params.set("section", section)
+  return <Navigate to={`/logs?${params}`} replace />
 }
 
 function PageFallback() {

@@ -1,3 +1,4 @@
+import { ListFilter, Settings2 } from 'lucide-react'
 import type { CatalogCondition, CatalogField, CatalogTab } from './catalog-types'
 import { inboundCatalog } from './inbound-catalog'
 import { outboundCatalog } from './outbound-host-catalog'
@@ -13,7 +14,6 @@ const cleanText = (value?: string) =>
         ),
     )
     .join('；')
-    .replaceAll('blocked', 'block')
     .replace(/[；]+$/, '') || undefined
 function clean(
   tabs: CatalogTab[],
@@ -30,16 +30,10 @@ function clean(
           fields: section.fields.filter(accept).map((field) => ({
             ...field,
             description: cleanText(field.description),
-            options: field.options
-              ?.filter(
-                (option) =>
-                  !['xmc', 'mkcp-legacy', 'realm'].includes(option.value),
-              )
-              .map((option) => ({
-                ...option,
-                value: option.value === 'blocked' ? 'block' : option.value,
-                label: option.label.replaceAll('blocked', 'block'),
-              })),
+            options: field.options?.filter(
+              (option) =>
+                !['xmc', 'mkcp-legacy', 'realm'].includes(option.value),
+            ),
           })),
         }))
         .filter((section) => section.fields.length),
@@ -210,41 +204,147 @@ runtimeOutboundCatalog.push({
     },
   ],
 })
-export const runtimeRuleCatalog: CatalogTab[] = clean(
+const sourceRuntimeRuleCatalog = clean(
   routingCatalog.filter((tab) => tab.id === 'rules'),
-  (field) => field.key !== 'routing.rule.enabled',
+  () => true,
 ).map((tab) => ({
   ...tab,
   sections: tab.sections.map((section) => ({
     ...section,
     fields: section.fields.map((field) => ({
       ...field,
-      defaultValue:
-        field.defaultValue === 'blocked' ? 'block' : field.defaultValue,
       backendKey: field.key.replace('routing.rule.', ''),
     })),
   })),
 }))
-for (const tab of runtimeRuleCatalog)
-  for (const section of tab.sections)
-    for (const field of section.fields) {
-      if (
-        ['routing.rule.outboundTag', 'routing.rule.balancerTag'].includes(
-          field.key,
-        )
-      ) {
-        field.control = 'text'
-        delete field.options
-      }
-      if (field.key === 'routing.rule.inboundTag') field.control = 'tags'
-    }
-runtimeRuleCatalog[0].sections[0].fields.push({
+const runtimeRuleFields: CatalogField[] = sourceRuntimeRuleCatalog.flatMap((tab) =>
+  tab.sections.flatMap((section) => section.fields),
+)
+for (const field of runtimeRuleFields) {
+  if (
+    ['routing.rule.outboundTag', 'routing.rule.balancerTag'].includes(field.key)
+  ) {
+    field.control = 'text'
+    delete field.options
+  }
+  if (field.key === 'routing.rule.inboundTag') field.control = 'tags'
+}
+runtimeRuleFields.push({
   key: 'routing.rule.port',
   backendKey: 'port',
   label: '目标端口',
   control: 'text',
   placeholder: '80,443,1000-2000',
 })
+
+const runtimeRuleFieldOverrides: Record<string, Partial<CatalogField>> = {
+  'routing.rule.enabled': {
+    description: '关闭后保留此规则，但不参与流量匹配。',
+  },
+  'routing.rule.inboundTag': {
+    label: '入站',
+    description: '仅匹配从这些入站进入的连接；留空表示全部入站。',
+  },
+  'routing.rule.outboundTag': {
+    label: '出站',
+    description: '匹配后发送到此出站；与均衡器二选一。',
+  },
+  'routing.rule.balancerTag': {
+    label: '均衡器',
+    description: '匹配后交给此均衡器选择出站；与出站二选一。',
+  },
+  'routing.rule.sourceIP': {
+    description: '匹配来源 IP、CIDR 或 GeoIP；留空表示不限制来源。',
+  },
+  'routing.rule.ip': {
+    description: '匹配目标 IP、CIDR 或 GeoIP；留空表示不限制目标 IP。',
+  },
+  'routing.rule.domain': {
+    description: '匹配域名、geosite、regexp 或 ext 规则；留空表示不限制域名。',
+  },
+  'routing.rule.port': {
+    description: '匹配目标端口，支持单端口、逗号列表和端口范围。',
+  },
+  'routing.rule.network': {
+    description: '按 TCP、UDP 或两者匹配；留空表示不限制网络类型。',
+  },
+  'routing.rule.protocol': {
+    description: '按嗅探到的 HTTP、TLS、QUIC 或 BitTorrent 协议匹配。',
+  },
+}
+for (const field of runtimeRuleFields) {
+  Object.assign(field, runtimeRuleFieldOverrides[field.key])
+}
+
+const runtimeRuleFieldsByKey = new Map(
+  runtimeRuleFields.map((field) => [field.key, field]),
+)
+function selectRuntimeRuleFields(keys: string[]) {
+  return keys
+    .map((key) => runtimeRuleFieldsByKey.get(key))
+    .filter((field): field is CatalogField => Boolean(field))
+}
+
+export const runtimeRuleCatalog: CatalogTab[] = [
+  {
+    id: 'rule-basic',
+    title: '基础配置',
+    icon: ListFilter,
+    description: '集中设置一条常用路由需要的入口、匹配条件和流量去向。',
+    sections: [
+      {
+        id: 'rule-entry-target',
+        title: '入口与去向',
+        description: '先决定规则是否启用、从哪里进入，以及匹配后发往哪里。',
+        fields: selectRuntimeRuleFields([
+          'routing.rule.enabled',
+          'routing.rule.inboundTag',
+          'routing.rule.outboundTag',
+          'routing.rule.balancerTag',
+        ]),
+      },
+      {
+        id: 'rule-common-match',
+        title: '常用匹配条件',
+        description: '填写需要限制的条件；同一规则中的多个条件同时满足才会命中。',
+        fields: selectRuntimeRuleFields([
+          'routing.rule.sourceIP',
+          'routing.rule.ip',
+          'routing.rule.domain',
+          'routing.rule.port',
+          'routing.rule.network',
+          'routing.rule.protocol',
+        ]),
+      },
+    ],
+  },
+  {
+    id: 'rule-advanced',
+    title: '高级配置',
+    icon: Settings2,
+    description: '配置较少使用的本地地址、进程、属性和 Webhook 条件。',
+    sections: [
+      {
+        id: 'rule-advanced-fields',
+        title: '高级匹配与扩展',
+        fields: selectRuntimeRuleFields([
+          'routing.rule.type',
+          'routing.rule.localIP',
+          'routing.rule.sourcePort',
+          'routing.rule.localPort',
+          'routing.rule.vlessRoute',
+          'routing.rule.user',
+          'routing.rule.process',
+          'routing.rule.attrs',
+          'routing.rule.ruleTag',
+          'routing.rule.webhook.url',
+          'routing.rule.webhook.deduplication',
+          'routing.rule.webhook.headers',
+        ]),
+      },
+    ],
+  },
+]
 const disallowGlobal = (field: CatalogField) =>
   !field.key.startsWith('api.') &&
   !field.key.startsWith('outbounds.direct.') &&

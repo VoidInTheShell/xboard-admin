@@ -10,10 +10,12 @@ import {
   Power,
   PowerOff,
   Link2,
+  Upload,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/layout/page-header'
 import { SourceOutboundDialog } from '@/components/control-plane/source-outbound-dialog'
+import { QuickOutboundImportDialog } from '@/components/control-plane/quick-outbound-import-dialog'
 import { WireDialog } from '@/components/control-plane/wire-editor'
 import { ConfirmActionDialog } from '@/components/control-plane/confirm-action-dialog'
 import {
@@ -101,6 +103,7 @@ export function OutboundsPage() {
   const [bulkBusy, setBulkBusy] = React.useState(false)
   const [sourceEditing, setSourceEditing] =
     React.useState<Partial<OutboundCandidate> | null>(null)
+  const [quickImportOpen, setQuickImportOpen] = React.useState(false)
   const nodes = useAdminQuery(
     React.useCallback(
       (signal) =>
@@ -152,6 +155,14 @@ export function OutboundsPage() {
               onClick={() => setSourceEditing({})}
             >
               从已有节点添加
+            </Button>
+            <Button
+              variant="outline"
+              disabled={pageBusy}
+              onClick={() => setQuickImportOpen(true)}
+            >
+              <Upload data-icon="inline-start" />
+              快速导入
             </Button>
             <Button
               disabled={pageBusy}
@@ -414,6 +425,11 @@ export function OutboundsPage() {
           />
         </div>
       </Card>
+      <QuickOutboundImportDialog
+        open={quickImportOpen}
+        onOpenChange={setQuickImportOpen}
+        onSaved={query.reload}
+      />
       {sourceEditing && (
         <SourceOutboundDialog
           candidate={sourceEditing}

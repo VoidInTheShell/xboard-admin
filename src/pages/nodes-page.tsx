@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { OnlineUsageCell } from '@/components/usage/server-usage-sheet'
 import { Link } from 'react-router-dom'
 import {
   RefreshCw,
@@ -12,10 +13,12 @@ import {
   PowerOff,
   Settings2,
   SlidersHorizontal,
+  Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { PageHeader } from '@/components/layout/page-header'
 import { RuntimeNodeDialog } from '@/components/control-plane/runtime-node-dialog'
+import { ConfirmActionDialog } from '@/components/control-plane/confirm-action-dialog'
 import {
   ResourceError,
   ResourceTableLoading,
@@ -58,10 +61,12 @@ export function NodesPage() {
     ),
   )
   const [editing, setEditing] = React.useState<RuntimeNode | null>(null)
+  const [removing, setRemoving] = React.useState<RuntimeNode | null>(null)
   const [search, setSearch] = React.useState('')
   const [bulkBusy, setBulkBusy] = React.useState(false)
+  const [deleteBusy, setDeleteBusy] = React.useState(false)
   const readBusy = query.loading || query.refreshing
-  const writeBusy = bulkBusy
+  const writeBusy = bulkBusy || deleteBusy
   const pageBusy = readBusy || writeBusy
   const nodes = query.data ?? []
   const rows = nodes.filter((node) =>
@@ -87,6 +92,21 @@ export function NodesPage() {
       query.reload()
     } catch (error) {
       toast.error(getErrorMessage(error))
+    }
+  }
+  async function removeNode() {
+    if (!removing || deleteBusy) return
+    setDeleteBusy(true)
+    try {
+      await api.post('server/manage/drop', { id: removing.id })
+      toast.success(`已删除节点 ${removing.name}`)
+      setRemoving(null)
+      selection.clear()
+      query.reload()
+    } catch (error) {
+      toast.error(getErrorMessage(error))
+    } finally {
+      setDeleteBusy(false)
     }
   }
   return (
@@ -183,6 +203,18 @@ export function NodesPage() {
                     enabled: false,
                   }),
               },
+              {
+                id: 'delete',
+                label: '删除节点',
+                description:
+                  '永久删除所选节点及其规则文件。仍被出站引用的节点会保留并提示先解除引用。',
+                icon: Trash2,
+                destructive: true,
+                runAll: (items) =>
+                  api.post('server/manage/batchDelete', {
+                    ids: items.map((item) => item.id),
+                  }),
+              },
             ]}
           />
         </div>
@@ -200,6 +232,7 @@ export function NodesPage() {
                 />
               </TableHead>
               <TableHead>节点</TableHead>
+              <TableHead>在线人数 / 设备</TableHead>
               <TableHead>发布地址</TableHead>
               <TableHead>倍率</TableHead>
               <TableHead>标签</TableHead>
@@ -209,7 +242,7 @@ export function NodesPage() {
           </TableHeader>
           <TableBody>
             {query.loading ? (
-              <ResourceTableLoading columns={7} />
+              <ResourceTableLoading columns={8} />
             ) : (
               rows.map((node) => (
                 <TableRow
@@ -256,6 +289,7 @@ export function NodesPage() {
                       </div>
                     </div>
                   </TableCell>
+                  <TableCell><OnlineUsageCell nodeId={node.id} /></TableCell>
                   <TableCell className="font-data text-xs">
                     {node.host}:{node.port}
                   </TableCell>
@@ -331,6 +365,16 @@ export function NodesPage() {
                           </Link>
                         </Button>
                       )}
+                      <Button
+                        variant="outline"
+                        size="icon-sm"
+                        className="text-destructive hover:text-destructive"
+                        aria-label={'删除节点 ' + node.name}
+                        disabled={pageBusy}
+                        onClick={() => setRemoving(node)}
+                      >
+                        <Trash2 />
+                      </Button>
                     </ButtonGroup>
                   </TableCell>
                 </TableRow>
@@ -339,7 +383,7 @@ export function NodesPage() {
             {!query.loading && !rows.length && (
               <TableRow>
                 <TableCell
-                  colSpan={7}
+                  colSpan={8}
                   className="h-24 text-center text-muted-foreground"
                 >
                   {search ? '没有匹配的节点。' : '尚未添加节点。'}
@@ -364,6 +408,20 @@ export function NodesPage() {
           onSaved={query.reload}
         />
       )}
+      <ConfirmActionDialog
+        open={removing !== null}
+        onOpenChange={(open) => !open && setRemoving(null)}
+        title="删除节点"
+        description={
+          removing
+            ? `将永久删除“${removing.name}”及其规则文件。节点仍被出站引用时，系统会拒绝删除并提示先解除引用。`
+            : ''
+        }
+        confirmLabel="删除节点"
+        destructive
+        busy={deleteBusy}
+        onConfirm={removeNode}
+      />
     </div>
   )
 }

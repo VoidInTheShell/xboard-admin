@@ -25,6 +25,7 @@ export type CatalogCondition = {
 export type CatalogField = {
   key: string
   backendKey?: string
+  sourceGroup?: string
   label: string
   control: CatalogControl
   description?: string
@@ -51,5 +52,7 @@ export type CatalogTab = {
   id: string
   title: string
   description?: string
+  icon?: LucideIcon
   sections: CatalogSection[]
 }
+import type { LucideIcon } from 'lucide-react'

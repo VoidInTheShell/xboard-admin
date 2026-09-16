@@ -1,4 +1,5 @@
 import * as React from "react"
+import { useSiteBranding } from "@/lib/site-branding"
 import { AlertCircle, ArrowRight, Network } from "lucide-react"
 import { Navigate, useLocation, useNavigate } from "react-router-dom"
 import { useAuth } from "@/lib/auth"
@@ -10,7 +11,6 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 
 type LoginLocationState = { from?: { pathname?: string } }
-const welcomeMessage = "欢迎使用UEG-NET管理面板"
 
 function prefersReducedMotion() {
   return (
@@ -20,6 +20,8 @@ function prefersReducedMotion() {
 }
 
 export function LoginPage() {
+  const brand = useSiteBranding()
+  const welcomeMessage = `欢迎使用 ${brand.appName} 管理后台`
   const { login, session } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
@@ -62,7 +64,7 @@ export function LoginPage() {
       if (timer) window.clearTimeout(timer)
       reducedMotion.removeEventListener("change", showCompleteMessage)
     }
-  }, [])
+  }, [welcomeMessage])
 
   if (session) return <Navigate to="/dashboard" replace />
 
@@ -87,11 +89,11 @@ export function LoginPage() {
       <section className="flex min-h-[240px] flex-col border-b bg-muted/30 p-5 sm:min-h-[320px] sm:p-6 lg:min-h-dvh lg:border-r lg:border-b-0 lg:p-10">
         <div className="flex items-center gap-3">
           <span className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            <Network aria-hidden="true" />
+            {brand.logo ? <img src={brand.logo} alt="" className="size-full rounded-xl bg-background object-contain" /> : <Network aria-hidden="true" />}
           </span>
           <div>
-            <div className="font-semibold">XBoard Admin</div>
-            <div className="text-xs text-muted-foreground">UEG infrastructure</div>
+            <div className="font-semibold">{brand.appName}</div>
+            <div className="text-xs text-muted-foreground">{brand.description || "管理后台"}</div>
           </div>
         </div>
 
@@ -100,7 +102,7 @@ export function LoginPage() {
             aria-label={welcomeMessage}
             className="max-w-lg text-2xl font-semibold tracking-tight sm:text-[28px]"
           >
-            <span aria-hidden="true">{welcomeText}</span>
+            <span aria-hidden="true">{prefersReducedMotion() ? welcomeMessage : welcomeText}</span>
             {typingWelcome ? (
               <span
                 aria-hidden="true"

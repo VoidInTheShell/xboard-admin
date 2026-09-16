@@ -1,3 +1,4 @@
+import { formatUsageValue } from "@/lib/traffic-format";
 import * as React from 'react'
 import {
   ArrowDown,
@@ -459,7 +460,7 @@ export function PlansPage() {
                     </TableCell>
                     <TableCell>
                       <span className="font-data text-xs">
-                        {plan.transfer_enable} GiB
+                        {formatUsageValue(plan.transfer_enable)}
                       </span>
                       <div className="mt-1 text-[11px] text-muted-foreground">
                         限速 {plan.speed_limit || '不限'} Mbps · 设备{' '}

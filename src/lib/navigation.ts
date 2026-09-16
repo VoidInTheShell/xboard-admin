@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react"
 import {
   Activity,
+  ArrowUpCircle,
   BellRing,
   BookOpenText,
   CircleDollarSign,
@@ -14,10 +15,10 @@ import {
   Mail,
   MonitorSmartphone,
   PackageOpen,
+  PanelsTopLeft,
   PlugZap,
   ReceiptText,
   Route,
-  RotateCcw,
   Server,
   Settings2,
   ShieldCheck,
@@ -25,6 +26,7 @@ import {
   Tags,
   TicketCheck,
   Users,
+  Trophy,
 } from "lucide-react"
 
 export type AdminNavItem = {
@@ -44,7 +46,11 @@ export const adminNavigation: AdminNavGroup[] = [
   {
     label: "总览",
     icon: Gauge,
-    items: [{ title: "仪表盘", path: "/dashboard", icon: Gauge, keywords: ["状态", "概览"] }],
+    items: [
+      { title: "仪表盘", path: "/dashboard", icon: Gauge, keywords: ["状态", "概览"] },
+      { title: "使用记录", path: "/usage", icon: Activity, keywords: ["流量", "在线", "设备", "登录", "订阅记录"] },
+      { title: "排行榜", path: "/leaderboard", icon: Trophy, keywords: ["排名", "用户流量", "节点流量", "历史设备"] },
+    ],
   },
   {
     label: "基础设施",
@@ -55,6 +61,7 @@ export const adminNavigation: AdminNavGroup[] = [
       { title: "节点管理", path: "/nodes", icon: Globe2, keywords: ["倍率", "流量"] },
       { title: "权限组管理", path: "/permission-groups", icon: ShieldCheck, keywords: ["分组", "可见性"] },
       { title: "订阅管理", path: "/subscriptions", icon: FileCode2, keywords: ["订阅模板", "Clash", "Sing-box"] },
+      { title: "客户端适配", path: "/clients", icon: MonitorSmartphone, keywords: ["下载", "平台", "默认推荐"] },
     ],
   },
   {
@@ -76,7 +83,6 @@ export const adminNavigation: AdminNavGroup[] = [
       { title: "知识库", path: "/knowledge", icon: BookOpenText },
       { title: "工单管理", path: "/tickets", icon: TicketCheck },
       { title: "邀请与佣金", path: "/commissions", icon: Gift },
-      { title: "客户端适配", path: "/clients", icon: MonitorSmartphone },
     ],
   },
   {
@@ -86,9 +92,9 @@ export const adminNavigation: AdminNavGroup[] = [
       { title: "支付配置", path: "/payments", icon: CircleDollarSign },
       { title: "邮件配置", path: "/mail", icon: Mail },
       { title: "系统配置", path: "/settings", icon: Settings2 },
+      { title: "版本更新", path: "/updates", icon: ArrowUpCircle, keywords: ["升级", "版本", "release", "dev", "节点客户端更新", "实例", "面板更新"] },
       { title: "主题与插件", path: "/extensions", icon: PlugZap },
-      { title: "审计日志", path: "/audit-logs", icon: FileClock },
-      { title: "流量重置日志", path: "/traffic-reset-logs", icon: RotateCcw },
+      { title: "日志", path: "/logs", icon: FileClock, keywords: ["审计", "邮件发送", "流量重置", "运行日志", "日志配置", "清理", "保留期"] },
     ],
   },
 ]
@@ -96,8 +102,8 @@ export const adminNavigation: AdminNavGroup[] = [
 export const serverWorkspaceTabs = [
   { title: "入站", value: "inbounds", icon: Layers3 },
   { title: "发布端点", value: "hosts", icon: Activity },
+  { title: "回落站点", value: "fallback", icon: PanelsTopLeft },
   { title: "证书管理", value: "certificates", icon: KeyRound },
-  { title: "出站", value: "outbounds", icon: Route },
   { title: "路由", value: "routing", icon: ReceiptText },
   { title: "Xray 配置", value: "xray-config", icon: Settings2 },
 ] as const

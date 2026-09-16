@@ -53,7 +53,9 @@ export function ClientLogoUpload({
   currentUrl,
   disabled,
   onChange,
+  label = '客户端图标',
 }: {
+  label?: string
   file: File | null
   currentUrl?: string | null
   disabled?: boolean
@@ -69,7 +71,7 @@ export function ClientLogoUpload({
             <img
               className="size-full object-contain"
               src={preview || currentUrl || undefined}
-              alt="客户端图标预览"
+              alt={`${label}预览`}
             />
           ) : (
             <ImagePlus
@@ -112,6 +114,7 @@ export function ClientLogoUpload({
       <Dialog open={open} onOpenChange={setOpen}>
         {open ? (
           <LogoCropContent
+            label={label}
             initialFile={file}
             onApply={(next) => {
               onChange(next)
@@ -126,10 +129,12 @@ export function ClientLogoUpload({
 }
 
 function LogoCropContent({
+  label,
   initialFile,
   onApply,
   onCancel,
 }: {
+  label: string
   initialFile: File | null
   onApply: (file: File) => void
   onCancel: () => void
@@ -194,7 +199,7 @@ function LogoCropContent({
       }}
     >
       <DialogHeader>
-        <DialogTitle>编辑客户端图标</DialogTitle>
+        <DialogTitle>编辑{label}</DialogTitle>
         <DialogDescription>
           选择图片并调整正方形裁剪区域，自动转换为 256 × 256 PNG 图标。
         </DialogDescription>
@@ -245,7 +250,7 @@ function LogoCropContent({
                 <img
                   ref={imageRef}
                   src={source}
-                  alt="待裁剪的客户端图标"
+                  alt={`待裁剪的${label}`}
                   className="block max-h-[40dvh] max-w-full object-contain"
                   onLoad={(event) => {
                     const image = event.currentTarget

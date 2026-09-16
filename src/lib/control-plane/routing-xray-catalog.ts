@@ -156,7 +156,7 @@ const routingSourceCatalog: CatalogTab[] = [
         id: "routing-basic",
         title: "基本路由",
         description:
-          "这些快捷项对应 3X-UI 的 blocked、direct、IPv4 规则投影，不是 XBoard 的套餐、订阅或分享字段。",
+          "这些快捷项对应 3X-UI 的 block、direct、IPv4 规则投影，不是 XBoard 的套餐、订阅或分享字段。",
         fields: [
           {
             key: "routing.domainStrategy",
@@ -173,7 +173,7 @@ const routingSourceCatalog: CatalogTab[] = [
             control: "select",
             options: [
               option("direct", "direct · 直接连接"),
-              option("blocked", "blocked · 丢弃"),
+              option("block", "block · 丢弃"),
             ],
             placeholder: "选择已配置的出站标签",
             defaultValue: "direct",
@@ -186,7 +186,7 @@ const routingSourceCatalog: CatalogTab[] = [
             control: "switch",
             defaultValue: true,
             description:
-              "对应 outboundTag=blocked、protocol=[bittorrent] 的 field 规则；关闭时移除这条快捷规则。",
+              "对应 outboundTag=block、protocol=[bittorrent] 的 field 规则；关闭时移除这条快捷规则。",
           },
           {
             key: "routing.basic.blockedIPs",
@@ -194,7 +194,7 @@ const routingSourceCatalog: CatalogTab[] = [
             control: "tags",
             placeholder: "geoip:private, 10.0.0.0/8",
             description:
-              "写入匹配 blocked 出站的 routing.rules[].ip；支持 CIDR、geoip:* 与 ext:geoip_*:* token。",
+              "写入匹配 block 出站的 routing.rules[].ip；支持 CIDR、geoip:* 与 ext:geoip_*:* token。",
           },
           {
             key: "routing.basic.blockedDomains",
@@ -202,7 +202,7 @@ const routingSourceCatalog: CatalogTab[] = [
             control: "tags",
             placeholder: "geosite:category-ads-all, domain:example.com",
             description:
-              "写入匹配 blocked 出站的 routing.rules[].domain；支持 geosite、domain、regexp 与 ext:geosite token。",
+              "写入匹配 block 出站的 routing.rules[].domain；支持 geosite、domain、regexp 与 ext:geosite token。",
           },
           {
             key: "routing.basic.directIPs",
@@ -360,7 +360,7 @@ const routingSourceCatalog: CatalogTab[] = [
             options: [
               option("", "(不设置)"),
               option("direct", "direct"),
-              option("blocked", "blocked"),
+              option("block", "block"),
               option("api", "api · 内部"),
             ],
             placeholder: "选择出站标签",
@@ -802,7 +802,7 @@ const xraySourceCatalog: CatalogTab[] = [
             key: "routing.balancer.fallbackTag",
             label: "备用目标",
             control: "select",
-            options: [option("", "(不设置)"), option("direct", "direct"), option("blocked", "blocked")],
+            options: [option("", "(不设置)"), option("direct", "direct"), option("block", "block")],
             placeholder: "出站或另一个均衡器标签",
             description:
               "routing.balancers[].fallbackTag；可选出站或另一个均衡器。引用均衡器会生成 _bl_<tag> loopback，并必须拒绝循环依赖。",

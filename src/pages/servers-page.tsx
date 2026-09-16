@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { OnlineUsageCell, ServerUsageSheet, defaultTrafficPolicy, type TrafficPolicy } from '@/components/usage/server-usage-sheet'
 import {
   Activity,
   ArrowDown,
@@ -96,6 +97,7 @@ import type {
 const serverColumns = [
   { key: 'identity', label: '服务器', required: true },
   { key: 'status', label: '状态', required: true },
+  { key: 'online', label: '在线人数 / 设备' },
   { key: 'instances', label: '实例' },
   { key: 'heartbeat', label: '最后心跳' },
   { key: 'load', label: '系统负载' },
@@ -124,6 +126,8 @@ export function ServersPage() {
     return () => window.clearInterval(timer)
   }, [query.reload])
   const [edit, setEdit] = React.useState<Partial<Machine> | null>(null)
+  const [information, setInformation] = React.useState<{ machine: Machine; tab: string } | null>(null)
+  const [trafficPolicies, setTrafficPolicies] = React.useState<Record<number, TrafficPolicy>>({})
   const [remove, setRemove] = React.useState<Machine | null>(null)
   const [saveBusy, setSaveBusy] = React.useState(false)
   const [removeBusy, setRemoveBusy] = React.useState(false)
@@ -143,7 +147,7 @@ export function ServersPage() {
   }, [machines, search])
   const selection = useListSelection(filteredMachines)
   const visibleColumns = useVisibleColumns(
-    'xboard-admin-servers-columns-v1',
+    'xboard-admin-servers-columns-v2',
     serverColumns,
   )
   const readBusy = query.loading || query.refreshing
@@ -321,6 +325,7 @@ export function ServersPage() {
           </Card>
         ))}
       </section>
+      {information && <ServerUsageSheet key={information.machine.id + information.tab} machine={information.machine} initialTab={information.tab} policy={trafficPolicies[information.machine.id] ?? defaultTrafficPolicy(information.machine.id)} onSave={policy => setTrafficPolicies(previous => ({ ...previous, [information.machine.id]: policy }))} onClose={() => setInformation(null)} />}
       <Card className="gap-0 overflow-hidden py-0 shadow-none">
         <div className="flex flex-col gap-3 border-b p-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex min-w-0 flex-1 items-center gap-2">
@@ -393,6 +398,7 @@ export function ServersPage() {
               {visibleColumns.has('instances') ? (
                 <TableHead>实例</TableHead>
               ) : null}
+              {visibleColumns.has('online') ? <TableHead>在线人数 / 设备</TableHead> : null}
               {visibleColumns.has('heartbeat') ? (
                 <TableHead>最后心跳</TableHead>
               ) : null}
@@ -486,6 +492,7 @@ export function ServersPage() {
                         </div>
                       </TableCell>
                     ) : null}
+                    {visibleColumns.has('online') ? <TableCell><OnlineUsageCell serverId={machine.id} /></TableCell> : null}
                     {visibleColumns.has('heartbeat') ? (
                       <TableCell className="min-w-20">
                         {seen ? (
@@ -515,6 +522,7 @@ export function ServersPage() {
                     ) : null}
                     <TableCell className="text-right lg:sticky lg:right-0 lg:z-10 lg:bg-card">
                       <ButtonGroup aria-label={`${machine.name} 操作`} className="ml-auto">
+                        <Button variant="outline" size="sm" onClick={() => setInformation({ machine, tab: 'history' })}>信息</Button>
                         <Button variant="outline" size="sm" asChild>
                           <Link to={'/servers/' + machine.id + '/inbounds'}>
                             配置
@@ -537,6 +545,10 @@ export function ServersPage() {
                               <DropdownMenuItem onSelect={() => setEdit(machine)}>
                                 <Pencil aria-hidden="true" />
                                 编辑
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => setInformation({ machine, tab: 'traffic' })}>
+                                <Activity aria-hidden="true" />
+                                流量管理
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 onSelect={() => void showInstallCommand(machine)}

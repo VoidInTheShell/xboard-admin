@@ -1,3 +1,4 @@
+import { formatTrafficBytes } from "@/lib/traffic-format";
 import * as React from "react"
 import { Activity, CircleAlert, CircleDollarSign, RefreshCw, Users } from "lucide-react"
 import { Link } from "react-router-dom"
@@ -104,11 +105,7 @@ function formatGrowth(value?: number) {
 }
 
 function formatBytes(value?: number | string) {
-  const bytes = Number(value ?? 0)
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B"
-  const units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"]
-  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
-  return `${(bytes / 1024 ** index).toFixed(index > 2 ? 2 : 1)} ${units[index]}`
+  return formatTrafficBytes(value == null ? undefined : Number(value));
 }
 
 function formatTrafficSplit(traffic?: Traffic) {
