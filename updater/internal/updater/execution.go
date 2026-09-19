@@ -743,12 +743,14 @@ func (a *Agent) continueAdminHandoff(ctx context.Context, j *Journal, handoff Ha
 		handoff = adopted
 	}
 	if handoff.Phase == HandoffTargetAdopted {
-		if j.Task.Status == "preparing" {
-			if err := a.handoffEvent(ctx, j, "installing", HandoffAdminInstalling, "正在由目标 Updater 替换 Admin", nil, ""); err != nil {
-				return err
-			}
-			handoff, _ = LoadHandoff(a.Config.HandoffFile())
+		// The handoff phase is the durable source of truth at this point. The
+		// local task status may still be empty or may reflect the last report
+		// flushed before the target updater adopted the lease, so do not require
+		// it to be exactly "preparing" before advancing the handoff.
+		if err := a.handoffEvent(ctx, j, "installing", HandoffAdminInstalling, "正在由目标 Updater 替换 Admin", nil, ""); err != nil {
+			return err
 		}
+		handoff, _ = LoadHandoff(a.Config.HandoffFile())
 	}
 	if handoff.Phase != HandoffAdminInstalling && handoff.Phase != HandoffVerifying {
 		return fmt.Errorf("unexpected Admin handoff phase: %s", handoff.Phase)
