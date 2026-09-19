@@ -1,6 +1,6 @@
 import * as React from "react"
-import { useNavigate } from "react-router-dom"
-import { Check, Command as CommandIcon, Languages, Moon, Search, Sun } from "lucide-react"
+import { Link, useLocation, useNavigate } from "react-router-dom"
+import { ArrowUpCircle, Check, Command as CommandIcon, Languages, Moon, Search, Sun } from "lucide-react"
 import { useTheme } from "next-themes"
 import { flatNavigation } from "@/lib/navigation"
 import { Button } from "@/components/ui/button"
@@ -24,9 +24,11 @@ import { SidebarTrigger } from "@/components/ui/sidebar"
 
 export function AdminTopbar() {
   const navigate = useNavigate()
+  const { pathname } = useLocation()
   const [searchOpen, setSearchOpen] = React.useState(false)
   const { resolvedTheme, setTheme } = useTheme()
   const items = flatNavigation()
+  const updatesActive = pathname === "/updates" || pathname.endsWith("/updates")
 
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -60,6 +62,22 @@ export function AdminTopbar() {
         </Button>
 
         <div className="ml-auto flex items-center gap-1">
+          <Button
+            asChild
+            variant={updatesActive ? "secondary" : "ghost"}
+            size="icon"
+            className="rounded-full"
+          >
+            <Link
+              to="/updates"
+              aria-label="版本更新"
+              aria-current={updatesActive ? "page" : undefined}
+              title="版本更新"
+            >
+              <ArrowUpCircle aria-hidden="true" />
+            </Link>
+          </Button>
+
           <Button
             variant="ghost"
             size="icon"

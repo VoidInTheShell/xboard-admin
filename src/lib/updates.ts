@@ -1,8 +1,8 @@
 export type UpdateChannel = "stable" | "dev"
 export type UpdateSection = "panel" | "servers"
 export type InstalledComponent = { component: string; name: string; version: string | null }
-export type UpdateInstance = { id: string; name: string; version: string | null; installation_method: string; updater_ready: boolean; reason?: string }
-export type UpdateMachine = { id: string; name: string; online: boolean; architecture: string; instances: UpdateInstance[] }
+export type UpdateInstance = { id: string; name: string; version: string | null; installation_method: string; updater_ready: boolean; updater_version?: string | null; reason?: string }
+export type UpdateMachine = { id: string; name: string; online: boolean; architecture: string; updater_version?: string | null; updater_protocol?: number | null; instances: UpdateInstance[] }
 export type UpdateRelease = {
   component: string
   version: string
@@ -24,6 +24,7 @@ export type UpdateTarget = {
   machineId?: string
   instanceId?: string
   method?: string
+  updaterVersion?: string | null
 }
 export function versionChannel(version: string | null): UpdateChannel | null {
   if (!version || version.trim() !== version) return null
@@ -51,7 +52,7 @@ export type UpdateTask = {
   message?: string
 }
 export type UpdateOverview = {
-  panel: { name: string; updater_ready: boolean; reason?: string; components: InstalledComponent[] }
+  panel: { name: string; updater_ready: boolean; updater_version?: string | null; update_protocol?: number | null; handoff_status?: string | null; reason?: string; components: InstalledComponent[] }
   machines: UpdateMachine[]
   tasks: UpdateTask[]
 }

@@ -92,18 +92,21 @@ export const adminNavigation: AdminNavGroup[] = [
       { title: "支付配置", path: "/payments", icon: CircleDollarSign },
       { title: "邮件配置", path: "/mail", icon: Mail },
       { title: "系统配置", path: "/settings", icon: Settings2 },
-      { title: "版本更新", path: "/updates", icon: ArrowUpCircle, keywords: ["升级", "版本", "release", "dev", "节点客户端更新", "实例", "面板更新"] },
       { title: "主题与插件", path: "/extensions", icon: PlugZap },
-      { title: "日志", path: "/logs", icon: FileClock, keywords: ["审计", "邮件发送", "流量重置", "运行日志", "日志配置", "清理", "保留期"] },
+      { title: "日志与存储", path: "/logs", icon: FileClock, keywords: ["日志", "审计", "邮件发送", "流量重置", "运行日志", "日志配置", "清理", "保留期"] },
     ],
   },
 ]
 
+export const adminStandaloneNavigation: AdminNavItem[] = [
+  { title: "版本更新", path: "/updates", icon: ArrowUpCircle, keywords: ["升级", "版本", "release", "dev", "节点客户端更新", "实例", "面板更新"] },
+]
+
 export const serverWorkspaceTabs = [
+  { title: "证书管理", value: "certificates", icon: KeyRound },
   { title: "入站", value: "inbounds", icon: Layers3 },
   { title: "发布端点", value: "hosts", icon: Activity },
   { title: "回落站点", value: "fallback", icon: PanelsTopLeft },
-  { title: "证书管理", value: "certificates", icon: KeyRound },
   { title: "路由", value: "routing", icon: ReceiptText },
   { title: "Xray 配置", value: "xray-config", icon: Settings2 },
 ] as const
@@ -128,5 +131,5 @@ export const resourceMeta: Record<string, { title: string; description: string; 
 }
 
 export function flatNavigation() {
-  return adminNavigation.flatMap((group) => group.items)
+  return [...adminNavigation.flatMap((group) => group.items), ...adminStandaloneNavigation]
 }

@@ -20,6 +20,7 @@ import { Tabs, TabsContent } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useAdminApi } from "@/lib/auth"
 import { cn } from "@/lib/utils"
+import { certificatePreviewEnabled } from "@/lib/control-plane/certificate-types"
 import { newestRelease, versionChannel, updateError, updateStatusLabels, type UpdateChannel, type UpdateOverview, type UpdateRelease, type UpdateTarget } from "@/lib/updates"
 
 const sections = [
@@ -27,6 +28,37 @@ const sections = [
   { id: "servers", title: "节点客户端更新", description: "按实例管理客户端版本", icon: Server },
 ] as const
 const channelNames = { stable: "主线（正式版）", dev: "Dev（开发版）" }
+
+function previewUpdateOverview(): UpdateOverview {
+  return {
+    panel: {
+      name: "JPGREEN 面板",
+      updater_ready: true,
+      updater_version: "v2.4.0",
+      update_protocol: 2,
+      handoff_status: "可升级",
+      components: [
+        { component: "xboard-admin", name: "Xboard Admin", version: "v2.4.0" },
+        { component: "xboard-backend", name: "Xboard 后端", version: "v2.4.0" },
+      ],
+    },
+    machines: [
+      {
+        id: "1",
+        name: "GJHK 预览服务器",
+        online: true,
+        architecture: "amd64",
+        updater_version: "v2.4.0",
+        updater_protocol: 2,
+        instances: [
+          { id: "101", name: "主节点实例", version: "v2.4.0", installation_method: "compose", updater_ready: true, updater_version: "v2.4.0" },
+          { id: "102", name: "备用节点实例", version: "v2.3.1", installation_method: "systemd", updater_ready: false, updater_version: "v2.3.1", reason: "等待一次性注册完成" },
+        ],
+      },
+    ],
+    tasks: [],
+  }
+}
 
 export function UpdatesPage() {
   const [params, setParams] = useSearchParams()
@@ -46,30 +78,41 @@ export function UpdatesPage() {
 
 function UpdateWorkspace({ panelMode }: { panelMode: boolean }) {
   const api = useAdminApi()
-  const [overview, setOverview] = useState<UpdateOverview | null>(null)
+  const [overview, setOverview] = useState<UpdateOverview | null>(() => certificatePreviewEnabled ? previewUpdateOverview() : null)
   const [refresh, setRefresh] = useState(0)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(!certificatePreviewEnabled)
   const [error, setError] = useState("")
   useEffect(() => {
+    if (certificatePreviewEnabled) return
     const controller = new AbortController()
     api.get<UpdateOverview>("update/overview", { target_kind: panelMode ? "panel" : "node" }, controller.signal)
       .then(data => { if (!controller.signal.aborted) { setOverview(data); setError(""); setLoading(false) } })
       .catch(reason => { if (!controller.signal.aborted) { setError(updateError(reason)); setLoading(false) } })
     return () => controller.abort()
   }, [api, panelMode, refresh])
-  function reload() { setLoading(true); setRefresh(value => value + 1) }
+  function reload() {
+    if (certificatePreviewEnabled) {
+      setOverview(previewUpdateOverview())
+      setError("")
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    setRefresh(value => value + 1)
+  }
   const targets: UpdateTarget[] = !overview ? [] : panelMode
-    ? overview.panel.components.map(item => ({ id: item.component, component: item.component, name: item.name, version: item.version, server: overview.panel.name, ready: overview.panel.updater_ready, reason: overview.panel.reason }))
+    ? overview.panel.components.map(item => ({ id: item.component, component: item.component, name: item.name, version: item.version, server: overview.panel.name, ready: overview.panel.updater_ready, reason: overview.panel.reason, updaterVersion: overview.panel.updater_version }))
     : overview.machines.flatMap(machine => machine.instances.map(instance => ({
       id: `${machine.id}/${instance.id}`, component: "xboard-node", name: instance.name, version: instance.version,
       server: machine.name, machineId: machine.id, instanceId: instance.id, method: instance.installation_method,
-      ready: machine.online && instance.updater_ready, reason: !machine.online ? "服务器离线" : instance.reason,
+      ready: machine.online && instance.updater_ready, updaterVersion: instance.updater_version ?? machine.updater_version, reason: !machine.online ? "服务器离线" : instance.reason,
     })))
   return <div className="flex min-w-0 flex-col gap-5">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div><h2 className="text-lg font-semibold">{panelMode ? "面板更新" : "节点客户端更新"}</h2><p className="mt-1 text-sm text-muted-foreground">{panelMode ? "分别选择用户后台、管理后台或后端更新。" : "以实例为单位更新，同一实例承载的入站会一起重启。"}</p></div>
       <Button variant="outline" onClick={reload} disabled={loading}><RefreshCw data-icon="inline-start" />{loading ? "正在检查" : "检查更新"}</Button>
     </div>
+    {overview && panelMode && <Card><CardHeader><CardTitle>Admin 更新包</CardTitle><CardDescription>Admin 与 Updater 使用同一个 Release 版本，不能分别选择。</CardDescription></CardHeader><CardContent><div className="grid gap-3 sm:grid-cols-3"><div><p className="text-xs text-muted-foreground">Admin 版本</p><p className="mt-1 font-data text-sm">{overview.panel.components.find(item => item.component === "xboard-admin")?.version || "尚未上报"}</p></div><div><p className="text-xs text-muted-foreground">Updater 版本</p><p className="mt-1 font-data text-sm">{overview.panel.updater_version || "尚未上报"}</p></div><div><p className="text-xs text-muted-foreground">状态</p><Badge className="mt-1" variant={overview.panel.updater_ready ? "secondary" : "outline"}>{overview.panel.handoff_status || (overview.panel.updater_ready ? "可升级" : "等待 Updater 心跳")}</Badge></div></div>{overview.panel.updater_version && overview.panel.components.find(item => item.component === "xboard-admin")?.version !== overview.panel.updater_version && <p className="mt-3 text-sm text-destructive">Admin 与 Updater 版本不一致，已暂停面板升级入口。</p>}</CardContent></Card>}
     {error && <Alert variant="destructive"><AlertTitle>无法读取更新信息</AlertTitle><AlertDescription>{error} 请稍后重新检查更新。</AlertDescription></Alert>}
     {loading ? <Skeleton className="h-64 w-full" role="status" aria-label="正在读取版本" /> : !error && <UpdateTable targets={targets} panelMode={panelMode} onCreated={reload} />}
     {overview && <Card><CardHeader><CardTitle>更新记录</CardTitle><CardDescription>查看更新结果，执行中的任务可通过检查更新刷新。</CardDescription></CardHeader><CardContent>
@@ -81,9 +124,28 @@ function UpdateWorkspace({ panelMode }: { panelMode: boolean }) {
 }
 
 type ReleaseState = { releases: UpdateRelease[]; error?: string }
+
+function previewChecks(targets: UpdateTarget[]): Record<string, ReleaseState> {
+  return Object.fromEntries(targets.map(target => {
+    const channel = versionChannel(target.version) || "stable"
+    const version = channel === "dev" ? "v9.9.9-dev.1.0" : "v9.9.9"
+    return [target.id, {
+      releases: [{
+        component: target.component,
+        version,
+        channel,
+        published_at: "2026-09-17T08:00:00Z",
+        notes: "预览发布：Admin 与 Updater 使用同一 Release 版本。",
+        compatible: true,
+        components: [],
+      }],
+    }]
+  }))
+}
+
 function UpdateTable({ targets, panelMode, onCreated }: { targets: UpdateTarget[]; panelMode: boolean; onCreated: () => void }) {
   const api = useAdminApi()
-  const [checks, setChecks] = useState<Record<string, ReleaseState>>({})
+  const [checks, setChecks] = useState<Record<string, ReleaseState>>(() => certificatePreviewEnabled ? previewChecks(targets) : {})
   const [selected, setSelected] = useState<string[]>([])
   const [searchInput, setSearchInput] = useState("")
   const [search, setSearch] = useState("")
@@ -94,6 +156,7 @@ function UpdateTable({ targets, panelMode, onCreated }: { targets: UpdateTarget[
   const eligible = visible.filter(target => target.ready)
   const selectedTargets = targets.filter(target => target.ready && selected.includes(target.id))
   useEffect(() => {
+    if (certificatePreviewEnabled) return
     const controller = new AbortController()
     targets.forEach(target => {
       const channel = versionChannel(target.version)
@@ -133,7 +196,7 @@ function UpdateTable({ targets, panelMode, onCreated }: { targets: UpdateTarget[
           const newer = latest && newestRelease([...check.releases, { ...latest, version: target.version! }], channel)?.version !== target.version
           return <TableRow key={target.id} data-state={selected.includes(target.id) ? "selected" : undefined}>
             {!panelMode && <TableCell className="pl-4"><Checkbox aria-label={`选择 ${target.name}`} disabled={!target.ready} checked={selected.includes(target.id)} onCheckedChange={checked => setSelected(previous => checked === true ? [...new Set([...previous, target.id])] : previous.filter(id => id !== target.id))} /></TableCell>}
-            <TableCell className={cn("py-4", panelMode && "pl-4")}><div className="font-medium">{target.name}</div><div className="mt-1 text-xs text-muted-foreground">{panelMode ? target.component : `ID ${target.instanceId} · ${target.method}`}</div></TableCell>
+            <TableCell className={cn("py-4", panelMode && "pl-4")}><div className="font-medium">{target.name}</div><div className="mt-1 text-xs text-muted-foreground">{panelMode ? target.component : `ID ${target.instanceId} · ${target.method}`}</div>{target.updaterVersion && <div className="mt-1 font-data text-[11px] text-muted-foreground">Updater {target.updaterVersion}</div>}</TableCell>
             {!panelMode && <TableCell>{target.server}</TableCell>}
             <TableCell><div className="font-data text-xs">{target.version || "尚未上报"}</div><div className="mt-1 text-xs text-muted-foreground">{channel ? channelNames[channel] : "分支未知"}</div></TableCell>
             <TableCell><div className="font-data text-xs">{!channel ? "请选择升级版本" : !check ? "检测中…" : check.error ? "检测失败" : latest?.version || "暂无发布"}</div><div className="mt-1 max-w-56 whitespace-normal text-xs text-muted-foreground">{check?.error || (latest ? newer ? "有新版本" : latest.version === target.version ? "已是最新版本" : "当前版本高于已发布版本" : "")}</div></TableCell>
@@ -203,7 +266,7 @@ function UpgradeDialog({ targets, panelMode, onClose, onCreated }: { targets: Up
           </Field>
         </FieldGroup>
         {release && <div className="flex flex-col gap-2 text-sm"><span className="text-xs text-muted-foreground">发布于 {new Date(release.published_at).toLocaleString("zh-CN")}</span><p className="whitespace-pre-wrap break-words">{release.notes || "此版本未提供更新说明。"}</p></div>}
-        <p className="text-sm text-muted-foreground">{panelMode ? `仅升级${targets[0].name}，升级期间该组件会短暂不可用。` : "升级会重启所选实例，其承载的入站连接将短暂中断。"}</p>
+        <p className="text-sm text-muted-foreground">{panelMode ? "Admin 与 Updater 会作为同一版本包交接；升级期间管理后台可能短暂不可用。" : "升级会重启所选实例，其承载的入站连接将短暂中断。"}</p>
       </div>
       <DialogFooter><Button variant="outline" disabled={submitting} onClick={() => { onClose(); if (done.length) onCreated() }}>取消</Button><Button disabled={!canSubmit} onClick={() => void submit()}>{submitting ? "正在提交" : Object.keys(failures).length ? "重试失败实例" : targets.length > 1 ? `确认升级（${pending.length}）` : "确认升级"}</Button></DialogFooter>
     </DialogContent>

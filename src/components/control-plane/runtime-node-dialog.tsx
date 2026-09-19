@@ -4,6 +4,11 @@ import { useAdminApi } from '@/lib/auth'
 import { getErrorMessage, useAdminQuery } from '@/hooks/use-admin-query'
 import type { RuntimeNode } from '@/lib/control-plane/runtime-api'
 import { object } from '@/lib/control-plane/xray-wire'
+import {
+  certificateRequirementFor,
+  type CertificateSelection,
+} from '@/lib/control-plane/certificate-types'
+import { CertificateSelector } from '@/components/control-plane/certificate-selector'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -31,6 +36,43 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Plus, Trash2 } from 'lucide-react'
+
+function inferredSecurity(settings: Record<string, unknown>) {
+  if (String(settings.security ?? '').trim()) return String(settings.security)
+  return settings.tls && settings.tls !== 0 && settings.tls !== false ? 'tls' : 'none'
+}
+
+function selectionFromNode(node?: RuntimeNode): CertificateSelection | null {
+  if (!node) return null
+  const mode = String(node.certificate_ref_mode ?? '')
+  const certificateId = String(node.certificate_id ?? '')
+  const certificatePath = String(node.certificate_path ?? '')
+  const privateKeyPath = String(node.private_key_path ?? '')
+  if (mode === 'path' && (certificatePath || privateKeyPath))
+    return {
+      mode: 'path',
+      certificateId: certificateId || `path:${certificatePath}:${privateKeyPath}`,
+      certificatePath,
+      privateKeyPath,
+    }
+  return certificateId ? { mode: 'server_certificate', certificateId } : null
+}
+
+function certificateRequirementForDraft(draft: Record<string, unknown>) {
+  const settings = object(draft.protocol_settings)
+  return certificateRequirementFor(draft.type, draft.security ?? inferredSecurity(settings), settings.network)
+}
+
+function certificateFieldVisible(draft: Record<string, unknown>) {
+  const settings = object(draft.protocol_settings)
+  const security = String(draft.security ?? inferredSecurity(settings)).trim().toLowerCase()
+  const requirement = certificateRequirementForDraft(draft)
+  return requirement === 'required' || (requirement === 'conditional' && security === 'tls')
+}
+
+function certificateFieldRequired(draft: Record<string, unknown>) {
+  return certificateRequirementForDraft(draft) === 'required'
+}
 
 export function RuntimeNodeDialog({
   node,
@@ -64,6 +106,7 @@ export function RuntimeNodeDialog({
           group_ids: Array.isArray(node.group_ids)
             ? node.group_ids.map(Number)
             : [],
+          security: String(node.security ?? inferredSecurity(object(node.protocol_settings))),
         }
       : {
           name: '',
@@ -78,9 +121,13 @@ export function RuntimeNodeDialog({
           group_ids: [],
           transfer_enable: 0,
           tags: [],
+          security: 'none',
+          certificate_id: null,
+          certificate_ref_mode: 'server_certificate',
           protocol_settings: { tls: 0, network: 'tcp' },
         },
   )
+  const [certificateSelection, setCertificateSelection] = React.useState<CertificateSelection | null>(() => selectionFromNode(node))
   const [busy, setBusy] = React.useState(false)
   const update = (key: string, value: unknown) =>
     setDraft((current) => ({ ...current, [key]: value }))
@@ -89,10 +136,26 @@ export function RuntimeNodeDialog({
     try {
       if (!String(draft.name).trim()) throw new Error('请输入实例名称')
       const protocol = object(draft.protocol_settings)
+      const security = String(draft.security ?? inferredSecurity(protocol))
+      const requirement = certificateRequirementFor(draft.type, security, protocol.network)
+      const activeCertificateSelection = requirement === 'none' ? null : certificateSelection
+      if (requirement === 'required' && !activeCertificateSelection)
+        throw new Error('当前协议和安全模式需要选择服务器证书。')
+      if (activeCertificateSelection?.mode === 'path' && (!activeCertificateSelection.certificatePath.trim() || !activeCertificateSelection.privateKeyPath.trim()))
+        throw new Error('证书路径模式需要同时填写证书和私钥路径。')
       const payload = {
         ...draft,
         show: Number(Boolean(draft.show)),
-        protocol_settings: protocol,
+        security,
+        protocol_settings: { ...protocol, security },
+        certificate_ref_mode: activeCertificateSelection?.mode ?? null,
+        certificate_id: activeCertificateSelection?.certificateId ?? null,
+        ...(activeCertificateSelection?.mode === 'path'
+          ? {
+              certificate_path: activeCertificateSelection.certificatePath,
+              private_key_path: activeCertificateSelection.privateKeyPath,
+            }
+          : {}),
         port: Number(draft.port),
         server_port: Number(draft.server_port),
         rate: Number(draft.rate),
@@ -146,6 +209,7 @@ export function RuntimeNodeDialog({
                         ? { version: 2, tls: {}, bandwidth: { up: 0, down: 0 } }
                         : { tls: 0, network: 'tcp' },
                   )
+                  update('security', value === 'hysteria' ? 'tls' : 'none')
                 }}
               >
                 <SelectTrigger id="node-protocol">
@@ -169,11 +233,32 @@ export function RuntimeNodeDialog({
                   </SelectGroup>
                 </SelectContent>
               </Select>
-              {draft.type === 'hysteria' ? (
-                <FieldDescription>
-                  使用 Hysteria 2，需要在证书管理中配置 TLS 证书。
-                </FieldDescription>
-              ) : null}
+            </Field>
+          )}
+          {!business && (
+            <Field>
+              <FieldLabel htmlFor="node-security">安全模式</FieldLabel>
+              <Select
+                value={String(draft.security ?? inferredSecurity(object(draft.protocol_settings)))}
+                onValueChange={(value) => {
+                  update('security', value)
+                  update('protocol_settings', {
+                    ...object(draft.protocol_settings),
+                    security: value,
+                    tls: value === 'tls' ? 1 : 0,
+                  })
+                }}
+              >
+                <SelectTrigger id="node-security"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value="none">不启用 TLS</SelectItem>
+                    <SelectItem value="tls">TLS</SelectItem>
+                    <SelectItem value="reality">REALITY</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <FieldDescription>选择 REALITY 或不启用 TLS 时，不要求服务器证书。</FieldDescription>
             </Field>
           )}
           <Field>
@@ -208,6 +293,15 @@ export function RuntimeNodeDialog({
               />
             </Field>
           )}
+          {!business && certificateFieldVisible(draft) && machineId ? (
+            <CertificateSelector
+              machineId={machineId}
+              value={certificateSelection}
+              onChange={setCertificateSelection}
+              required={certificateFieldRequired(draft)}
+              disabled={busy}
+            />
+          ) : null}
           {business && (
             <>
               <Field>

@@ -56,6 +56,7 @@ import {
 } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import {
   Table,
@@ -79,6 +80,7 @@ import { useAdminApi } from '@/lib/auth'
 import { useAdminQuery, getErrorMessage } from '@/hooks/use-admin-query'
 import { useListSelection } from '@/hooks/use-list-selection'
 import { useVisibleColumns } from '@/hooks/use-visible-columns'
+import { certificatePreviewEnabled } from '@/lib/control-plane/certificate-types'
 import {
   formatPercent,
   formatRate,
@@ -113,11 +115,57 @@ const statusCopy: Record<
   offline: { label: '离线', tone: 'danger' },
 }
 
+function installStatusLabel(machine: Machine) {
+  const updater = machine.updater
+  if (!updater) {
+    return machineStatus(machine) === 'online'
+      ? 'Agent 在线，等待 Updater 首次心跳'
+      : '已登记，等待 Agent 上线'
+  }
+  if (updater.blocked) return 'Updater 已阻断，需先处理回滚状态'
+  if (updater.ready) {
+    return `Updater ${updater.updater_version ?? '未知版本'} 在线，可执行版本更新`
+  }
+  if (updater.online) return 'Updater 在线，但协议尚未就绪'
+  return 'Updater 已登记，等待最近心跳'
+}
+
+function previewMachines(): Machine[] {
+  return [
+    {
+      id: 1,
+      name: 'GJHK 预览服务器',
+      notes: '本地 UI 预览数据，不会连接远程服务器。',
+      is_active: true,
+      last_seen_at: '2026-09-17T08:30:00Z',
+      servers_count: 0,
+      load_status: {
+        cpu: 18,
+        mem: { total: 16, used: 6 },
+        disk: { total: 200, used: 74 },
+        net: { in_speed: 12, out_speed: 8 },
+        updated_at: '2026-09-17T08:30:00Z',
+      },
+    },
+    {
+      id: 2,
+      name: 'US3 CloudCone 预览服务器',
+      notes: '用于检查安装方式和节点登记状态的本地预览。',
+      is_active: true,
+      last_seen_at: null,
+      servers_count: 1,
+      load_status: null,
+    },
+  ]
+}
+
 export function ServersPage() {
   const api = useAdminApi()
   const query = useAdminQuery(
     React.useCallback(
-      (signal) => api.get<Machine[]>('server/machine/fetch', undefined, signal),
+      (signal) => certificatePreviewEnabled
+        ? Promise.resolve(previewMachines())
+        : api.get<Machine[]>('server/machine/fetch', undefined, signal),
       [api],
     ),
   )
@@ -133,6 +181,9 @@ export function ServersPage() {
   const [removeBusy, setRemoveBusy] = React.useState(false)
   const [bulkBusy, setBulkBusy] = React.useState(false)
   const [installingId, setInstallingId] = React.useState<number | null>(null)
+  const [installTarget, setInstallTarget] = React.useState<Machine | null>(null)
+  const [installMode, setInstallMode] = React.useState<'compose' | 'docker' | 'systemd'>('compose')
+  const [installVersion, setInstallVersion] = React.useState('')
   const [command, setCommand] = React.useState('')
   const [search, setSearch] = React.useState('')
   const machines = React.useMemo(() => query.data ?? [], [query.data])
@@ -225,12 +276,24 @@ export function ServersPage() {
     }
   }
 
-  async function showInstallCommand(machine: Machine) {
-    setInstallingId(machine.id)
+  function showInstallCommand(machine: Machine) {
+    setInstallTarget(machine)
+    setInstallMode('compose')
+    setInstallVersion('')
+    setCommand('')
+  }
+
+  async function generateInstallCommand() {
+    if (!installTarget) return
+    if (!/^v\d+\.\d+\.\d+(?:-dev\.\d+\.\d+)?$/.test(installVersion.trim())) {
+      toast.error('请输入准确的 Xboard-Node Release 版本，例如 v1.14.0-dev.123.1。')
+      return
+    }
+    setInstallingId(installTarget.id)
     try {
-      const result = await api.get<{ command?: string }>(
+      const result = await api.post<{ command?: string }>(
         'server/machine/installCommand',
-        { id: machine.id },
+        { id: installTarget.id, version: installVersion.trim(), mode: installMode },
       )
       if (!result?.command) throw new Error('后端没有返回安装命令。')
       setCommand(result.command)
@@ -524,7 +587,7 @@ export function ServersPage() {
                       <ButtonGroup aria-label={`${machine.name} 操作`} className="ml-auto">
                         <Button variant="outline" size="sm" onClick={() => setInformation({ machine, tab: 'history' })}>信息</Button>
                         <Button variant="outline" size="sm" asChild>
-                          <Link to={'/servers/' + machine.id + '/inbounds'}>
+                          <Link to={'/servers/' + machine.id + '/certificates'}>
                             配置
                             <ArrowRight data-icon="inline-end" />
                           </Link>
@@ -652,31 +715,40 @@ export function ServersPage() {
         </DialogContent>
       </Dialog>
       <Dialog
-        open={Boolean(command)}
-        onOpenChange={(open) => !open && setCommand('')}
+        open={Boolean(installTarget)}
+        onOpenChange={(open) => !open && !installingId && (setCommand(''), setInstallTarget(null))}
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Agent 安装命令</DialogTitle>
+            <DialogTitle>安装 Xboard-Node Agent</DialogTitle>
             <DialogDescription>
-              命令包含此机器的注册令牌，仅在目标机器上执行。
+              选择准确版本和安装方式后生成一次性注册命令。命令只应在目标机器上执行。
             </DialogDescription>
           </DialogHeader>
-          <Field>
-            <FieldLabel htmlFor="machine-command">安装命令</FieldLabel>
-            <Input
-              id="machine-command"
-              type="password"
-              value={command}
-              readOnly
-            />
-            <FieldDescription>
-              复制后通过你的机器管理工具执行。
-            </FieldDescription>
-          </Field>
+          {installTarget && <>
+            <div className="rounded-xl border bg-muted/30 p-3 text-sm"><div className="font-medium">{installTarget.name}</div><div className="mt-1 text-xs text-muted-foreground">SID {installTarget.id} · {installStatusLabel(installTarget)}</div></div>
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="machine-install-version">Xboard-Node 准确版本</FieldLabel>
+                <Input id="machine-install-version" value={installVersion} disabled={Boolean(command) || installingId !== null} onChange={(event) => setInstallVersion(event.target.value)} placeholder="v1.14.0-dev.123.1" />
+                <FieldDescription>只接受已发布的准确 tag；不能使用 latest 或滚动地址。</FieldDescription>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="machine-install-mode">安装方式</FieldLabel>
+                <Select value={installMode} disabled={Boolean(command) || installingId !== null} onValueChange={(value) => setInstallMode(value as typeof installMode)}>
+                  <SelectTrigger id="machine-install-mode"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectGroup><SelectItem value="compose">Docker Compose（推荐）</SelectItem><SelectItem value="docker">Docker</SelectItem><SelectItem value="systemd">原生 systemd</SelectItem></SelectGroup></SelectContent>
+                </Select>
+              </Field>
+            </FieldGroup>
+            {command ? <Field>
+              <FieldLabel htmlFor="machine-command">安装命令</FieldLabel>
+              <Input id="machine-command" type="password" value={command} readOnly />
+              <FieldDescription>复制后通过你的机器管理工具执行；Updater 以兼容协议在线后，面板才会允许版本更新。</FieldDescription>
+            </Field> : <p className="text-sm text-muted-foreground">当前状态只代表服务器已登记。命令执行和首次心跳需要在目标机器上完成。</p>}
+          </>}
           <DialogFooter>
-            <Button
-              onClick={() => {
+            {command ? <Button onClick={() => {
                 void navigator.clipboard
                   .writeText(command)
                   .then(() => toast.success('已复制安装命令'))
@@ -685,10 +757,7 @@ export function ServersPage() {
                       getErrorMessage(error, '复制失败，请检查浏览器权限。'),
                     ),
                   )
-              }}
-            >
-              复制命令
-            </Button>
+              }}>复制命令</Button> : <Button disabled={installingId !== null} onClick={() => void generateInstallCommand()}>{installingId !== null ? '正在生成…' : '生成安装命令'}</Button>}
           </DialogFooter>
         </DialogContent>
       </Dialog>

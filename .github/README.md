@@ -26,28 +26,33 @@ The legacy deployment implementation is retained for recovery reference only.
 Non-dev builds keep run-specific build tags and do not become installable Releases.
 No floating branch/latest image tags are published.
 
-## Artifact contract (schema version 1)
+## Artifact contract (schema version 2)
 
 Every public release contains release-manifest.json:
 
 - component, repository, version, channel (stable/dev), source_commit;
-- image: ghcr.io/voidintheshell/xboard-admin:VERSION;
+- artifacts.admin_image: ghcr.io/voidintheshell/xboard-admin:VERSION;
+- artifacts.updater_image: ghcr.io/voidintheshell/xboard-admin-updater:VERSION;
+- artifacts.updater_binaries for linux/amd64 and linux/arm64, pointing to the
+  matching xboard-updater assets in this same Release;
 - platforms: linux/amd64 and linux/arm64;
-- compatibility.panel_contract=1 and compatibility.update_protocol=1;
-- update_capability=external-executor-required: an updater is not bundled yet.
+- compatibility.panel_contract=1, compatibility.update_protocol=2 and
+  compatibility.updater_state_schema=1.
 
 The updater must reject drafts, missing/incompatible manifests, wrong repository
-namespaces and incomplete platforms. The Git tag, image tag and runtime version
-must agree. Releases are visible only after image publication and runtime checks
-on both architectures. No artifact hash comparison is required.
+namespaces and incomplete platforms. The Git tag, both image tags, updater binary
+URLs and runtime versions must agree. Releases are visible only after both image
+publications, updater binary checks and runtime checks on both architectures. No
+artifact hash comparison is required.
 
-Published image versions are never overwritten on retries. Authentication or
+Published image versions and updater artifacts are never overwritten on retries. Authentication or
 registry failures stop publication instead of assuming a version does not exist.
 A failed release stays draft and must not be listed as an available update.
 
 ## Discover a new development version
 
 Wait for the workflow to publish a non-draft Pre-release with its complete
-release-manifest.json. In Admin, select the component's Dev channel and refresh
-the version list. A newly pushed commit or a draft tag is not installable.
+release-manifest.json and matching updater artifacts. In Admin, select the
+component's Dev channel and refresh the version list. A newly pushed commit or a
+draft tag is not installable.
 The selected full version remains fixed when the update task is created.

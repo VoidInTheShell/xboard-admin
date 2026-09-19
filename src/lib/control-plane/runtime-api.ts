@@ -35,6 +35,19 @@ export type MachineLoadMetrics = {
 
 export type MachineStatus = 'disabled' | 'online' | 'offline'
 
+export type MachineUpdater = {
+  online: boolean
+  ready: boolean
+  blocked: boolean
+  protocol: number
+  state_schema: number
+  updater_version: string | null
+  installation_method: string | null
+  architecture: string | null
+  handoff_phase: string | null
+  last_seen_at: string | number | null
+}
+
 export type Machine = {
   id: number
   name: string
@@ -43,6 +56,7 @@ export type Machine = {
   last_seen_at: string | number | null
   servers_count: number
   load_status: MachineLoadStatus | null
+  updater?: MachineUpdater | null
 }
 export type RuntimeNode = {
   id: number

@@ -13,6 +13,7 @@ import { toast } from 'sonner'
 import { PageHeader } from '@/components/layout/page-header'
 import { WireDialog, WireEditor } from '@/components/control-plane/wire-editor'
 import { RuntimeNodeDialog } from '@/components/control-plane/runtime-node-dialog'
+import { CertificateWorkspace } from '@/components/control-plane/certificate-workspace'
 import { RuleFilesManagerDialog } from '@/components/control-plane/rule-files-manager-dialog'
 import { FallbackSiteEditor } from '@/components/control-plane/fallback-site-editor'
 import { ResourceError } from '@/components/control-plane/resource-states'
@@ -74,10 +75,7 @@ import {
   machineStatus,
 } from '@/lib/control-plane/runtime-api'
 import type { CatalogTab } from '@/lib/control-plane/catalog-types'
-import {
-  certificateCatalog,
-  certificateConfigForSave,
-} from '@/lib/control-plane/certificate-catalog'
+import { certificatePreviewEnabled } from '@/lib/control-plane/certificate-types'
 
 const rawCatalog: CatalogTab[] = [
   {
@@ -170,16 +168,31 @@ type Editor = {
   value: JsonObject
 } | null
 
+function previewMachine(machineId: number): Machine {
+  return {
+    id: machineId,
+    name: 'GJHK 预览服务器',
+    notes: '仅用于本地前端预览，不会写入服务器。',
+    is_active: true,
+    last_seen_at: '2026-09-17T08:30:00Z',
+    servers_count: 0,
+    load_status: null,
+  }
+}
+
 export function ServerWorkspacePage() {
   const navigate = useNavigate()
   const params = useParams()
   const machineId = Number(params.serverId ?? params.id)
-  const active = params.tab ?? params.section ?? 'inbounds'
+  const active = params.tab ?? params.section ?? 'certificates'
   const api = useAdminApi()
   const [search, setSearch] = useSearchParams()
   const query = useAdminQuery(
     React.useCallback(
       async (signal) => {
+        if (certificatePreviewEnabled) {
+          return { machine: previewMachine(machineId), nodes: [] }
+        }
         const [machines, nodes] = await Promise.all([
           api.get<Machine[]>('server/machine/fetch', undefined, signal),
           api.get<RuntimeNode[]>('server/manage/getNodes', undefined, signal),
@@ -208,14 +221,14 @@ export function ServerWorkspacePage() {
   const resource = useAdminQuery(
     React.useCallback(
       (signal) =>
-        node
+        node && active !== 'certificates'
           ? api.get<XrayResource>(
               'server/xray/fetch',
               { node_id: node.id },
               signal,
             )
           : Promise.resolve(null),
-      [api, node],
+      [active, api, node],
     ),
   )
   React.useEffect(() => {
@@ -640,7 +653,9 @@ export function ServerWorkspacePage() {
                   machineId +
                   '/' +
                   tab.value +
-                  (node ? '?instance=' + node.id : '')
+                  (node && tab.value !== 'certificates'
+                    ? '?instance=' + node.id
+                    : '')
                 }
               >
                 <tab.icon data-icon="inline-start" />
@@ -664,8 +679,10 @@ export function ServerWorkspacePage() {
           onRetry={resource.reload}
         />
       )}
-      {query.loading || resource.loading ? (
+      {query.loading || (active !== 'certificates' && resource.loading) ? (
         <Skeleton className="h-64 w-full" />
+      ) : active === 'certificates' ? (
+        <CertificateWorkspace machineId={machineId} />
       ) : !node ? (
         <Card>
           <CardHeader>
@@ -888,38 +905,6 @@ export function ServerWorkspacePage() {
                 title="发布端点"
                 description="设置用户订阅中的连接地址和端口。"
                 onSave={saveNode}
-              />
-            )}
-            {active === 'certificates' && (
-              <WireEditor
-                key={'cert-' + node.id + '-' + snapshot.config_revision}
-                kind="certificate"
-                errorPrefix="cert_config"
-                initialIssues={runtimeIssues}
-                tabs={certificateCatalog(node.id)}
-                value={certificateConfigForSave(
-                  {
-                    ...object(node.cert_config),
-                    cert_mode:
-                      object(node.cert_config).cert_mode ??
-                      object(node.cert_config).mode ??
-                      'none',
-                  },
-                  node.id,
-                )}
-                title="实例证书"
-                description="申请或指定 TLS 证书。文件路径填写节点上的位置。"
-                onValidate={(value) =>
-                  api.post('server/xray/validate', {
-                    node_id: node.id,
-                    cert_config: certificateConfigForSave(value, node.id),
-                  })
-                }
-                onSave={(value) => {
-                  return saveNode({
-                    cert_config: certificateConfigForSave(value, node.id),
-                  })
-                }}
               />
             )}
             {active === 'xray-config' && (

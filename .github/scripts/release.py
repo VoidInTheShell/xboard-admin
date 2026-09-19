@@ -78,14 +78,30 @@ def image_reference(component, tag):
 
 
 def validate_manifest(manifest, component, tag):
-    require(manifest.get("schema_version") == 1, "Unsupported release manifest schema")
+    require(manifest.get("schema_version") == 2, "Unsupported release manifest schema")
     require(manifest.get("component") == component and manifest.get("version") == tag,
             "Component manifest identity mismatch")
     require(manifest.get("repository") == REPOS[component][0], "Unexpected release repository")
-    require(manifest.get("image") == image_reference(component, tag), "Unexpected image reference")
     require(manifest.get("platforms") == ["linux/amd64", "linux/arm64"], "Incomplete image platforms")
     require(manifest.get("channel") == ("dev" if "-dev." in tag else "stable"), "Channel mismatch")
-    require(manifest.get("compatibility", {}).get("panel_contract") == 1, "Incompatible panel contract")
+    require(re.fullmatch(r"[0-9a-fA-F]{40}", manifest.get("source_commit", "")) is not None,
+            "Invalid source commit")
+    compatibility = manifest.get("compatibility", {})
+    require(compatibility.get("panel_contract") == 1
+            and compatibility.get("update_protocol") == 2
+            and compatibility.get("updater_state_schema") == 1,
+            "Incompatible updater contract")
+    if component == "xboard-admin":
+        artifacts = manifest.get("artifacts", {})
+        require(artifacts.get("admin_image") == image_reference(component, tag), "Unexpected Admin image reference")
+        require(artifacts.get("updater_image") == image_reference("xboard-admin-updater", tag),
+                "Unexpected updater image reference")
+        prefix = f"https://github.com/{REPOS[component][0]}/releases/download/{tag}/xboard-updater-"
+        require(artifacts.get("updater_binaries", {}).get("linux/amd64") == prefix + "linux-amd64"
+                and artifacts.get("updater_binaries", {}).get("linux/arm64") == prefix + "linux-arm64",
+                "Unexpected updater binary references")
+    else:
+        require(manifest.get("image") == image_reference(component, tag), "Unexpected image reference")
     return manifest
 
 
@@ -113,7 +129,13 @@ def dependency(component, selector, channel):
         if len(assets) != 1:
             continue
         manifest = validate_manifest(public_json(assets[0]["browser_download_url"], repo, tag), component, tag)
-        return {"repository": repo, "version": tag, "image": manifest["image"]}
+        return {
+            "repository": repo,
+            "version": tag,
+            "image": manifest.get("image") or manifest.get("artifacts", {}).get("admin_image"),
+            "artifacts": manifest.get("artifacts", {}),
+            "compatibility": manifest.get("compatibility", {}),
+        }
     raise ValueError(f"No complete compatible release for {repo}; publish the frontend first or select an exact version")
 
 
@@ -142,12 +164,21 @@ def plan(config, env):
         tag = f'build-{env["GITHUB_RUN_ID"]}-{env["GITHUB_RUN_ATTEMPT"]}'
         require(re.fullmatch(r"build-[1-9]\d*-[1-9]\d*", tag) is not None, "Invalid build identity")
         channel, publish = "legacy", False
-    return {"schema_version": 1, "component": component, "repository": repo,
+    admin_image = f"ghcr.io/voidintheshell/xboard-admin:{tag}"
+    updater_image = f"ghcr.io/voidintheshell/xboard-admin-updater:{tag}"
+    binary_prefix = f"https://github.com/{repo}/releases/download/{tag}/xboard-updater-"
+    return {"schema_version": 2, "component": component, "repository": repo,
             "version": tag, "channel": channel, "source_commit": sha, "publish": publish,
-            "image": f"ghcr.io/voidintheshell/{component}:{tag}",
             "platforms": ["linux/amd64", "linux/arm64"],
-            "compatibility": {"panel_contract": 1, "update_protocol": 1},
-            "update_capability": "external-executor-required"}
+            "artifacts": {
+                "admin_image": admin_image,
+                "updater_image": updater_image,
+                "updater_binaries": {
+                    "linux/amd64": binary_prefix + "linux-amd64",
+                    "linux/arm64": binary_prefix + "linux-arm64",
+                },
+            },
+            "compatibility": {"panel_contract": 1, "update_protocol": 2, "updater_state_schema": 1}}
 
 
 def output(values):
@@ -219,11 +250,14 @@ def complete(path, assets_dir):
     require(os.environ["GITHUB_REPOSITORY"].lower() == repo.lower()
             and os.environ["GITHUB_SHA"] == manifest["source_commit"], "Release execution identity changed")
     validate_manifest(manifest, manifest["component"], tag)
-    require(image_exists(manifest["image"]), "Image missing")
+    require(image_exists(manifest["artifacts"]["admin_image"]), "Admin image missing")
+    require(image_exists(manifest["artifacts"]["updater_image"]), "Updater image missing")
     release = release_for_tag(repo, tag)
     require(release is not None, "Prepared draft release is missing")
     require(release["draft"], "Release is already public")
     required = [path]
+    if manifest["component"] == "xboard-admin":
+        required += [assets_dir / f"xboard-updater-linux-{arch}" for arch in ("amd64", "arm64")]
     if manifest["component"] == "xboard-node":
         required += [assets_dir / f"{name}-linux-{arch}" for name in ("xboard-node", "xbctl") for arch in ("amd64", "arm64")]
         assets_dir.mkdir(parents=True, exist_ok=True)
@@ -254,14 +288,31 @@ def complete(path, assets_dir):
     api(f"repos/{repo}/releases/{release['id']}", {
         "draft": False, "prerelease": manifest["channel"] == "dev",
         "make_latest": "false" if manifest["channel"] == "dev" else "true",
-        "body": f"{tag}\n\nImage: {manifest['image']}\n\nSee {ASSET} for exact versions and compatibility.\n"
-                "Publishing does not request an upgrade. An external update executor is required.",
+                "body": f"{tag}\n\nAdmin image: {manifest['artifacts']['admin_image']}\n"
+                f"Updater image: {manifest['artifacts']['updater_image']}\n\n"
+                f"See {ASSET} for exact versions and compatibility.\n"
+                "Publishing does not request an upgrade. The Admin updater is a separate release artifact.",
     }, method="PATCH")
+
+
+def verify_contract(path, assets_dir):
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    require(manifest.get("publish"), "Legacy build cannot be published as a release")
+    validate_manifest(manifest, manifest["component"], manifest["version"])
+    require(manifest["component"] == "xboard-admin", "Updater artifact verification requires an Admin release")
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    for arch in ("amd64", "arm64"):
+        asset = assets_dir / f"xboard-updater-linux-{arch}"
+        require(asset.is_file() and asset.stat().st_size > 0, "Missing updater binary: " + str(asset))
+    amd64 = assets_dir / "xboard-updater-linux-amd64"
+    result = subprocess.run([str(amd64), "version"], capture_output=True, text=True)
+    require(result.returncode == 0 and result.stdout.strip() == manifest["version"],
+            "Updater binary version does not match the release plan")
 
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=["prepare", "image-check", "complete"])
+    parser.add_argument("command", choices=["prepare", "image-check", "updater-image-check", "verify-contract", "complete"])
     parser.add_argument("--plan", type=Path, default=Path(os.environ.get("RUNNER_TEMP", ".")) / ASSET)
     parser.add_argument("--assets", type=Path, default=Path("release-binaries"))
     args = parser.parse_args()
@@ -269,7 +320,12 @@ def main():
         prepare(json.loads(Path(".github/release-config.json").read_text(encoding="utf-8")), args.plan)
     elif args.command == "image-check":
         data = json.loads(args.plan.read_text(encoding="utf-8"))
-        output({"exists": image_exists(data["image"])})
+        output({"exists": image_exists(data["artifacts"]["admin_image"])})
+    elif args.command == "updater-image-check":
+        data = json.loads(args.plan.read_text(encoding="utf-8"))
+        output({"exists": image_exists(data["artifacts"]["updater_image"])})
+    elif args.command == "verify-contract":
+        verify_contract(args.plan, args.assets)
     else:
         complete(args.plan, args.assets)
 
