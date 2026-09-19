@@ -375,6 +375,8 @@ jobs:
         with:
           name: updater-binaries-${{ needs.prepare-release.outputs.version }}
           path: release-binaries
+      - name: Restore updater binary execute permissions
+        run: chmod 0755 release-binaries/xboard-updater-linux-*
       - name: Set up QEMU for binary runtime verification
         uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
       - name: Verify both updater binary architectures
@@ -604,6 +606,8 @@ jobs:
         with:
           name: updater-binaries-${{ needs.prepare-release.outputs.version }}
           path: release-binaries
+      - name: Restore updater binary execute permissions
+        run: chmod 0755 release-binaries/xboard-updater-linux-*
       - name: Publish only after every required artifact is ready
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
