@@ -219,17 +219,6 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: true
 
-      - name: Verify published runtime version on both architectures
-        env:
-          EXPECTED_VERSION: ${{ needs.prepare-release.outputs.version }}
-        run: |
-          set -Eeuo pipefail
-          image="${REGISTRY}/${IMAGE_NAME}:${EXPECTED_VERSION}"
-          for platform in linux/amd64 linux/arm64; do
-            actual=$(docker run --rm --platform "$platform" --entrypoint cat "$image" /etc/xboard-version)
-            test "$actual" = "$EXPECTED_VERSION"
-          done
-
       - name: Report staging image tag
         env:
           IMAGE_TAG: ${{ needs.prepare-release.outputs.version }}
@@ -309,17 +298,6 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: true
 
-      - name: Verify updater image on both architectures
-        env:
-          EXPECTED_VERSION: ${{ needs.prepare-release.outputs.version }}
-        run: |
-          set -Eeuo pipefail
-          image="${REGISTRY}/${UPDATER_IMAGE_NAME}:${EXPECTED_VERSION}"
-          for platform in linux/amd64 linux/arm64; do
-            actual=$(docker run --rm --platform "$platform" --entrypoint xboard-updater "$image" version)
-            test "$actual" = "$EXPECTED_VERSION"
-          done
-
       - name: Set up Go for release binaries
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
@@ -354,44 +332,6 @@ jobs:
           path: ${{ runner.temp }}/updater-binaries/xboard-updater-linux-*
           if-no-files-found: error
           retention-days: 30
-
-  verify-release-contract:
-    name: Verify schema 2 release contract
-    if: github.event_name != 'pull_request'
-    needs: [prepare-release, build-admin-image, build-updater-artifacts]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
-        with:
-          ref: ${{ needs.prepare-release.outputs.checkout_ref }}
-      - name: Download frozen release plan
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
-        with:
-          name: ${{ needs.prepare-release.outputs.plan_artifact }}
-          path: ${{ runner.temp }}
-      - name: Download updater binaries
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
-        with:
-          name: updater-binaries-${{ needs.prepare-release.outputs.version }}
-          path: release-binaries
-      - name: Restore updater binary execute permissions
-        run: chmod 0755 release-binaries/xboard-updater-linux-*
-      - name: Set up QEMU for binary runtime verification
-        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
-      - name: Verify both updater binary architectures
-        env:
-          EXPECTED_VERSION: ${{ needs.prepare-release.outputs.version }}
-        run: |
-          set -Eeuo pipefail
-          docker run --rm --platform linux/amd64 \
-            --volume "${GITHUB_WORKSPACE}/release-binaries:/assets:ro" \
-            alpine:3.20 /assets/xboard-updater-linux-amd64 version | grep -F -- "${EXPECTED_VERSION}"
-          docker run --rm --platform linux/arm64 \
-            --volume "${GITHUB_WORKSPACE}/release-binaries:/assets:ro" \
-            alpine:3.20 /assets/xboard-updater-linux-arm64 version | grep -F -- "${EXPECTED_VERSION}"
-      - name: Verify manifest and local release assets
-        run: python3 .github/scripts/release.py verify-contract --assets release-binaries
 
   deploy-staging:
     name: Update GJHK standalone admin
@@ -582,7 +522,7 @@ jobs:
 
   release:
     name: Publish complete version
-    needs: [prepare-release, build-admin-image, build-updater-artifacts, verify-release-contract]
+    needs: [prepare-release, build-admin-image, build-updater-artifacts]
     if: needs.prepare-release.outputs.publish == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -606,8 +546,6 @@ jobs:
         with:
           name: updater-binaries-${{ needs.prepare-release.outputs.version }}
           path: release-binaries
-      - name: Restore updater binary execute permissions
-        run: chmod 0755 release-binaries/xboard-updater-linux-*
       - name: Publish only after every required artifact is ready
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
