@@ -108,6 +108,7 @@ export function CertificateDialog({
         await api.post('server/certificate/validate', {
           id: certificate?.id,
           machine_id: machineId,
+          name: draft.name.trim(),
           source_type: draft.source_type,
           domains,
           email: draft.email.trim() || null,
