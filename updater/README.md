@@ -40,10 +40,14 @@ from the updater container, while environment and secret files remain private.
 Hooks are local argv arrays installed by the administrator; the panel cannot
 provide shell commands or arbitrary host paths.
 
-Admin self-update uses a two-phase Compose handoff: it creates and starts the
-target Updater before the old executor exits, then the target adopts the
-durable handoff journal. This avoids killing the process that issued the
-replacement command while the new container is still only in `created` state.
+Admin self-update uses a two-phase Compose handoff. The current updater starts
+the target with `docker compose run --detach --rm --name …`, so a fixed
+`container_name` on the declared service cannot make Compose remove the old
+executor before the target is ready. After the old service exits, the target
+creates and starts the declared Compose service, records that stable name in the
+handoff journal, and exits; the temporary one-off container removes itself.
+This preserves restart policy and keeps later `compose up` operations free of
+one-off-name conflicts.
 
 ## Architecture policy
 

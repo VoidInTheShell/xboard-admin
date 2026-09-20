@@ -23,6 +23,8 @@ type adminHandoffHarness struct {
 	task         Task
 	target       Target
 	stateDir     string
+	handoffName  string
+	oldRemoved   bool
 }
 
 func newAdminHandoffHarness(t *testing.T) *adminHandoffHarness {
@@ -57,17 +59,28 @@ func newAdminHandoffHarness(t *testing.T) *adminHandoffHarness {
 		line := name + " " + strings.Join(args, " ")
 		h.commands = append(h.commands, line)
 		switch {
-		case strings.Contains(line, "create --no-deps") && strings.Contains(line, "xboard-updater"):
+		case strings.Contains(line, "run --no-deps") && strings.Contains(line, "xboard-updater"):
+			parts := strings.Fields(line)
+			for i := range parts {
+				if parts[i] == "--name" && i+1 < len(parts) {
+					h.handoffName = parts[i+1]
+					break
+				}
+			}
 			return nil, nil
 		case strings.Contains(line, "ps --all --format json") && strings.Contains(line, "xboard-updater"):
-			return []byte(`{"ID":"target-updater","Name":"panel-updater-handoff","Image":"` + h.task.Manifest.Artifacts.UpdaterImage + `","State":"created"}`), nil
-		case strings.Contains(line, "docker start target-updater"):
-			return nil, nil
+			return []byte(`{"ID":"target-updater","Name":"` + h.handoffName + `","Image":"` + h.task.Manifest.Artifacts.UpdaterImage + `","State":"running"}`), nil
 		case strings.Contains(line, "docker inspect --format {{.State.Status}} xboard-updater"):
+			if h.oldRemoved {
+				return []byte("created"), nil
+			}
 			return []byte("exited"), nil
 		case strings.Contains(line, "docker rm xboard-updater"):
+			h.oldRemoved = true
 			return nil, nil
-		case strings.Contains(line, "docker rename panel-updater-handoff xboard-updater"):
+		case strings.Contains(line, "create --no-deps") && strings.Contains(line, "xboard-updater"):
+			return nil, nil
+		case strings.Contains(line, "docker start xboard-updater"):
 			return nil, nil
 		case strings.Contains(line, "ps --all --quiet"):
 			return []byte("handoff-admin"), nil
@@ -113,6 +126,9 @@ func TestAdminPerformPersistsBootingHandoffAndStartsTargetUpdater(t *testing.T) 
 	if !strings.Contains(joined, h.task.Manifest.Artifacts.UpdaterImage) || !strings.Contains(joined, "xboard-updater") {
 		t.Fatalf("target updater was not pulled and started: %s", joined)
 	}
+	if !strings.Contains(joined, "run --no-deps") || !strings.Contains(joined, "--rm") {
+		t.Fatalf("target updater was not started as a removable one-off container: %s", joined)
+	}
 	if !strings.Contains(joined, h.target.ComposeExtraFiles[0]) {
 		t.Fatalf("Compose overlay was not loaded: %s", joined)
 	}
@@ -144,6 +160,9 @@ func TestAdminHandoffReportsJointSuccess(t *testing.T) {
 	}
 	if final.Phase != HandoffSucceeded {
 		t.Fatalf("handoff phase = %s, want %s", final.Phase, HandoffSucceeded)
+	}
+	if final.Target.HandoffContainer != final.Target.Container {
+		t.Fatalf("promoted updater did not restore the stable service name: %#v", final.Target)
 	}
 	for _, report := range h.reports {
 		if report["status"] != "succeeded" {
