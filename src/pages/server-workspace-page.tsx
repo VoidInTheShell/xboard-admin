@@ -221,14 +221,14 @@ export function ServerWorkspacePage() {
   const resource = useAdminQuery(
     React.useCallback(
       (signal) =>
-        node && active !== 'certificates'
+        node
           ? api.get<XrayResource>(
               'server/xray/fetch',
               { node_id: node.id },
               signal,
             )
           : Promise.resolve(null),
-      [active, api, node],
+      [api, node],
     ),
   )
   React.useEffect(() => {
@@ -679,7 +679,7 @@ export function ServerWorkspacePage() {
           onRetry={resource.reload}
         />
       )}
-      {query.loading || (active !== 'certificates' && resource.loading) ? (
+      {query.loading || resource.loading ? (
         <Skeleton className="h-64 w-full" />
       ) : active === 'certificates' ? (
         <CertificateWorkspace machineId={machineId} />
