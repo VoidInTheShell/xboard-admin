@@ -171,11 +171,7 @@ func (a *Agent) composeContainers(ctx context.Context, t Target, service string)
 	return containers, nil
 }
 
-func (a *Agent) persistHandoffContainer(j *Journal, name string) error {
-	return a.persistHandoffContainerName(name)
-}
-
-func (a *Agent) persistHandoffContainerName(name string) error {
+func (a *Agent) persistHandoffContainer(name string) error {
 	if name == "" || !namePattern.MatchString(name) {
 		return errors.New("invalid handoff container name")
 	}
@@ -209,7 +205,13 @@ func (a *Agent) nextHandoffContainer(j *Journal) string {
 func (a *Agent) cleanupPreviousUpdater(ctx context.Context, t Target, handoff Handoff) error {
 	previous := handoff.Target.Container
 	target := handoff.Target.HandoffContainer
-	if previous == "" || previous == target {
+	if previous == "" {
+		return nil
+	}
+	if target == "" {
+		return errors.New("handoff target updater container is missing")
+	}
+	if previous == target {
 		return nil
 	}
 	previousGone := false
@@ -220,7 +222,11 @@ func (a *Agent) cleanupPreviousUpdater(ctx context.Context, t Target, handoff Ha
 			break
 		}
 		if strings.TrimSpace(status) != "running" {
-			_, _ = a.exec(ctx, "docker", "rm", previous)
+			if _, rmErr := a.exec(ctx, "docker", "rm", previous); rmErr != nil {
+				if _, inspectErr := a.exec(ctx, "docker", "inspect", previous); inspectErr == nil {
+					return fmt.Errorf("remove stopped previous updater: %w", rmErr)
+				}
+			}
 			previousGone = true
 			break
 		}
@@ -236,7 +242,7 @@ func (a *Agent) cleanupPreviousUpdater(ctx context.Context, t Target, handoff Ha
 	if err != nil {
 		return fmt.Errorf("promoted updater service is missing: %w", err)
 	}
-	if err := a.persistHandoffContainerName(previous); err != nil {
+	if err := a.persistHandoffContainer(previous); err != nil {
 		return err
 	}
 	if strings.TrimSpace(status) != "running" {
@@ -532,7 +538,7 @@ func (a *Agent) switchUpdater(ctx context.Context, j *Journal, image string) err
 	if target == nil {
 		return errors.New("Compose did not create the target updater container")
 	}
-	if err := a.persistHandoffContainer(j, target.Name); err != nil {
+	if err := a.persistHandoffContainer(target.Name); err != nil {
 		return err
 	}
 	if target.State != "running" {
