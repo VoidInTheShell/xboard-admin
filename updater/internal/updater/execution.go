@@ -140,6 +140,69 @@ func (a *Agent) compose(ctx context.Context, t Target, extra []string, args ...s
 	}
 	return a.exec(ctx, "docker", append(base, args...)...)
 }
+
+type composeContainer struct {
+	ID    string `json:"ID"`
+	Name  string `json:"Name"`
+	Image string `json:"Image"`
+	State string `json:"State"`
+}
+
+func (a *Agent) composeContainers(ctx context.Context, t Target, service string) ([]composeContainer, error) {
+	raw, err := a.compose(ctx, t, nil, "ps", "--all", "--format", "json", service)
+	if err != nil {
+		return nil, err
+	}
+	var containers []composeContainer
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var container composeContainer
+		if err := json.Unmarshal([]byte(line), &container); err != nil {
+			return nil, fmt.Errorf("invalid Compose container listing: %w", err)
+		}
+		if container.ID == "" || container.Name == "" || container.Image == "" {
+			return nil, errors.New("Compose container listing is incomplete")
+		}
+		containers = append(containers, container)
+	}
+	return containers, nil
+}
+
+func (a *Agent) persistHandoffContainer(j *Journal, name string) error {
+	handoff, err := LoadHandoff(a.Config.HandoffFile())
+	if err != nil {
+		return err
+	}
+	handoff.Target.HandoffContainer = name
+	handoff.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	return SaveHandoff(a.Config.HandoffFile(), handoff)
+}
+
+// cleanupPreviousUpdater removes the stopped pre-handoff service container.
+// Compose may have to create the target under a temporary generated name while
+// the old executor is still the process issuing the replacement command. Never
+// remove a running container or the target container itself.
+func (a *Agent) cleanupPreviousUpdater(ctx context.Context, handoff Handoff) {
+	previous := handoff.Target.Container
+	target := handoff.Target.HandoffContainer
+	if previous == "" || previous == target {
+		return
+	}
+	for i := 0; i < 20; i++ {
+		status, err := a.exec(ctx, "docker", "inspect", "--format", "{{.State.Status}}", previous)
+		if err != nil {
+			return
+		}
+		if strings.TrimSpace(status) != "running" {
+			_, _ = a.exec(ctx, "docker", "rm", previous)
+			return
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+}
 func (a *Agent) container(ctx context.Context, t Target) (string, error) {
 	if t.Method == "docker" {
 		return t.Container, nil
@@ -393,8 +456,48 @@ func (a *Agent) switchUpdater(ctx context.Context, j *Journal, image string) err
 	if err := a.setComposeServiceImage(j.Target, a.updaterService(), image); err != nil {
 		return err
 	}
-	_, err := a.compose(ctx, j.Target, nil, "up", "--detach", "--no-deps", "--no-build", "--pull", "never", a.updaterService())
-	return err
+	// `up --detach` cannot safely replace the process that is issuing the
+	// command: Compose stops the old executor before the replacement is fully
+	// started. Create the target first, identify its generated container, then
+	// start it directly while this executor is still alive. The old process
+	// exits immediately after returning from this function; the target adopts
+	// the durable handoff journal and becomes the sole executor.
+	if _, err := a.compose(ctx, j.Target, nil, "create", "--no-deps", "--no-build", "--pull", "never", a.updaterService()); err != nil {
+		return err
+	}
+	containers, err := a.composeContainers(ctx, j.Target, a.updaterService())
+	if err != nil {
+		return err
+	}
+	var target *composeContainer
+	for i := range containers {
+		candidate := &containers[i]
+		if candidate.Image == image && candidate.State != "running" {
+			target = candidate
+			break
+		}
+	}
+	if target == nil {
+		for i := range containers {
+			candidate := &containers[i]
+			if candidate.Image == image {
+				target = candidate
+				break
+			}
+		}
+	}
+	if target == nil {
+		return errors.New("Compose did not create the target updater container")
+	}
+	if err := a.persistHandoffContainer(j, target.Name); err != nil {
+		return err
+	}
+	if target.State != "running" {
+		if _, err := a.exec(ctx, "docker", "start", target.ID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 func (a *Agent) prepare(ctx context.Context, j *Journal) error {
 	var err error
@@ -725,6 +828,7 @@ func (a *Agent) continueHandoffRollback(ctx context.Context, j *Journal, handoff
 		}
 	}
 	result := map[string]any{"version": j.Previous, "updater_version": handoff.FromUpdaterVersion}
+	a.cleanupPreviousUpdater(ctx, handoff)
 	if j.Task.Status != "rolled_back" {
 		if err := a.handoffEvent(ctx, j, "rolled_back", HandoffRolledBack, "更新未完成，Admin 与 Updater 已恢复并验证", result, ""); err != nil {
 			return err
@@ -784,6 +888,9 @@ func (a *Agent) continueAdminHandoff(ctx context.Context, j *Journal, handoff Ha
 	// retried from the verifying journal rather than being reported as success.
 	if err := a.heartbeat(ctx); err != nil {
 		return err
+	}
+	if completed, loadErr := LoadHandoff(a.Config.HandoffFile()); loadErr == nil {
+		a.cleanupPreviousUpdater(ctx, completed)
 	}
 	result := map[string]any{"version": j.Task.Version, "updater_version": handoff.ToUpdaterVersion}
 	if err := a.handoffEvent(ctx, j, "succeeded", HandoffSucceeded, "升级完成，Admin 与 Updater 版本及健康检查通过", result, ""); err != nil {

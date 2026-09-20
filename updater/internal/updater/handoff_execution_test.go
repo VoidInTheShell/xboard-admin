@@ -57,6 +57,16 @@ func newAdminHandoffHarness(t *testing.T) *adminHandoffHarness {
 		line := name + " " + strings.Join(args, " ")
 		h.commands = append(h.commands, line)
 		switch {
+		case strings.Contains(line, "create --no-deps") && strings.Contains(line, "xboard-updater"):
+			return nil, nil
+		case strings.Contains(line, "ps --all --format json") && strings.Contains(line, "xboard-updater"):
+			return []byte(`{"ID":"target-updater","Name":"panel-updater-handoff","Image":"` + h.task.Manifest.Artifacts.UpdaterImage + `","State":"created"}`), nil
+		case strings.Contains(line, "docker start target-updater"):
+			return nil, nil
+		case strings.Contains(line, "docker inspect --format {{.State.Status}} xboard-updater"):
+			return []byte("exited"), nil
+		case strings.Contains(line, "docker rm xboard-updater"):
+			return nil, nil
 		case strings.Contains(line, "ps --all --quiet"):
 			return []byte("handoff-admin"), nil
 		case strings.Contains(line, "exec handoff-admin cat /etc/xboard-version"):

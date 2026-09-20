@@ -40,6 +40,11 @@ from the updater container, while environment and secret files remain private.
 Hooks are local argv arrays installed by the administrator; the panel cannot
 provide shell commands or arbitrary host paths.
 
+Admin self-update uses a two-phase Compose handoff: it creates and starts the
+target Updater before the old executor exits, then the target adopts the
+durable handoff journal. This avoids killing the process that issued the
+replacement command while the new container is still only in `created` state.
+
 ## Architecture policy
 
 GitHub Actions builds and verifies linux/amd64 and linux/arm64 images and
