@@ -191,16 +191,25 @@ func (a *Agent) cleanupPreviousUpdater(ctx context.Context, handoff Handoff) {
 	if previous == "" || previous == target {
 		return
 	}
+	previousGone := false
 	for i := 0; i < 20; i++ {
 		status, err := a.exec(ctx, "docker", "inspect", "--format", "{{.State.Status}}", previous)
 		if err != nil {
-			return
+			previousGone = true
+			break
 		}
 		if strings.TrimSpace(status) != "running" {
 			_, _ = a.exec(ctx, "docker", "rm", previous)
-			return
+			previousGone = true
+			break
 		}
 		time.Sleep(250 * time.Millisecond)
+	}
+	if previousGone && target != "" && target != previous {
+		// Restore the administrator-declared service name after the old
+		// container is gone. This keeps subsequent Compose operations from
+		// accumulating generated handoff names.
+		_, _ = a.exec(ctx, "docker", "rename", target, previous)
 	}
 }
 func (a *Agent) container(ctx context.Context, t Target) (string, error) {

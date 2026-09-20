@@ -67,6 +67,8 @@ func newAdminHandoffHarness(t *testing.T) *adminHandoffHarness {
 			return []byte("exited"), nil
 		case strings.Contains(line, "docker rm xboard-updater"):
 			return nil, nil
+		case strings.Contains(line, "docker rename panel-updater-handoff xboard-updater"):
+			return nil, nil
 		case strings.Contains(line, "ps --all --quiet"):
 			return []byte("handoff-admin"), nil
 		case strings.Contains(line, "exec handoff-admin cat /etc/xboard-version"):
