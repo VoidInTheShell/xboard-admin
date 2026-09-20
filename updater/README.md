@@ -32,9 +32,13 @@ not be exposed to untrusted users or workloads.
 
 For a Compose target, configuration must use an absolute Compose file, an
 optional absolute env file, a fixed project name, a fixed service name, and
-an administrator-owned health URL. Hooks are local argv arrays installed by
-the administrator; the panel cannot provide shell commands or arbitrary host
-paths.
+an administrator-owned health URL. If the updater service is supplied by a
+local Compose overlay, bootstrap records its absolute path in
+`compose_extra_files`; every updater Compose operation loads those files before
+the persistent image-selection override. The overlay path must be readable
+from the updater container, while environment and secret files remain private.
+Hooks are local argv arrays installed by the administrator; the panel cannot
+provide shell commands or arbitrary host paths.
 
 ## Architecture policy
 
