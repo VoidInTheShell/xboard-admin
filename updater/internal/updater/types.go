@@ -43,9 +43,12 @@ type Target struct {
 	Container      string `json:"container,omitempty"`
 	ComposeFile    string `json:"compose_file,omitempty"`
 	ComposeEnvFile string `json:"compose_env_file,omitempty"`
-	ComposeProject string `json:"compose_project,omitempty"`
-	ComposeService string `json:"compose_service,omitempty"`
-	HealthURL      string `json:"health_url"`
+	// ComposeExtraFiles are administrator-owned overlay files needed by an
+	// installation whose updater service is not part of the base Compose file.
+	ComposeExtraFiles []string `json:"compose_extra_files,omitempty"`
+	ComposeProject    string   `json:"compose_project,omitempty"`
+	ComposeService    string   `json:"compose_service,omitempty"`
+	HealthURL         string   `json:"health_url"`
 	// Hooks are local, administrator-owned argv arrays; never accepted from the panel.
 	Quiesce []string `json:"quiesce,omitempty"`
 	Backup  []string `json:"backup,omitempty"`
@@ -199,6 +202,11 @@ func (c Config) Validate() error {
 		case "compose":
 			if t.ComposeEnvFile != "" && !filepath.IsAbs(t.ComposeEnvFile) {
 				return errors.New("compose_env_file must be absolute")
+			}
+			for _, extra := range t.ComposeExtraFiles {
+				if !filepath.IsAbs(extra) || filepath.Clean(extra) == string(filepath.Separator) {
+					return errors.New("compose_extra_files must be absolute")
+				}
 			}
 			if !filepath.IsAbs(t.ComposeFile) || !namePattern.MatchString(t.ComposeProject) || !namePattern.MatchString(t.ComposeService) {
 				return errors.New("compose target requires absolute file, project and service")

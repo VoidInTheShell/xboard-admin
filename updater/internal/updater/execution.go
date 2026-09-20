@@ -128,6 +128,9 @@ func (a *Agent) compose(ctx context.Context, t Target, extra []string, args ...s
 	if t.ComposeEnvFile != "" {
 		base = append(base, "--env-file", t.ComposeEnvFile)
 	}
+	for _, file := range t.ComposeExtraFiles {
+		base = append(base, "--file", file)
+	}
 	persistent := filepath.Join(a.Config.StateDir, "compose-"+t.ComposeProject+".json")
 	if _, err := os.Stat(persistent); err == nil {
 		base = append(base, "--file", persistent)

@@ -32,6 +32,7 @@ func newAdminHandoffHarness(t *testing.T) *adminHandoffHarness {
 	target.ComposeProject = "handoff-test"
 	target.ComposeService = "admin"
 	target.ComposeFile = filepath.Join(t.TempDir(), "compose.yaml")
+	target.ComposeExtraFiles = []string{filepath.Join(t.TempDir(), "updater.override.yaml")}
 	h := &adminHandoffHarness{running: "v0.2.0", task: task, target: target, stateDir: t.TempDir()}
 	token := filepath.Join(h.stateDir, "token")
 	if err := os.WriteFile(token, []byte("test-only"), 0600); err != nil {
@@ -99,6 +100,9 @@ func TestAdminPerformPersistsBootingHandoffAndStartsTargetUpdater(t *testing.T) 
 	joined := strings.Join(h.commands, "\n")
 	if !strings.Contains(joined, h.task.Manifest.Artifacts.UpdaterImage) || !strings.Contains(joined, "xboard-updater") {
 		t.Fatalf("target updater was not pulled and started: %s", joined)
+	}
+	if !strings.Contains(joined, h.target.ComposeExtraFiles[0]) {
+		t.Fatalf("Compose overlay was not loaded: %s", joined)
 	}
 }
 
