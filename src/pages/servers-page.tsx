@@ -188,28 +188,21 @@ export function ServersPage() {
   const [versionsBusy, setVersionsBusy] = React.useState(false)
   const [installVersion, setInstallVersion] = React.useState('')
   const [command, setCommand] = React.useState('')
-  React.useEffect(() => {
-    if (!installTarget || certificatePreviewEnabled) return
-    const controller = new AbortController()
+  async function loadInstallVersions(channel: 'dev' | 'stable') {
     setVersionsBusy(true)
-    api.get<{ version: string }[]>('update/node-releases', { channel: installChannel }, controller.signal)
-      .then((releases) => {
-        if (controller.signal.aborted) return
-        const versions = releases.map((item) => item.version)
-        setInstallVersions(versions)
-        setInstallVersion((current) => (versions.includes(current) ? current : versions[0] ?? ''))
-      })
-      .catch((error) => {
-        if (controller.signal.aborted) return
-        toast.error(getErrorMessage(error, '无法读取版本列表，请重试。'))
-        setInstallVersions([])
-        setInstallVersion('')
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setVersionsBusy(false)
-      })
-    return () => controller.abort()
-  }, [api, installTarget, installChannel])
+    try {
+      const releases = await api.get<{ version: string }[]>('update/node-releases', { channel })
+      const versions = releases.map((item) => item.version)
+      setInstallVersions(versions)
+      setInstallVersion((current) => (versions.includes(current) ? current : versions[0] ?? ''))
+    } catch (error) {
+      toast.error(getErrorMessage(error, '无法读取版本列表，请重试。'))
+      setInstallVersions([])
+      setInstallVersion('')
+    } finally {
+      setVersionsBusy(false)
+    }
+  }
   const [search, setSearch] = React.useState('')
   const machines = React.useMemo(() => query.data ?? [], [query.data])
   const filteredMachines = React.useMemo(() => {
@@ -307,6 +300,7 @@ export function ServersPage() {
         })
         setInstallMode('compose')
         setCommand('')
+        void loadInstallVersions(installChannel)
       }
     } catch (error) {
       toast.error(getErrorMessage(error))
@@ -320,6 +314,7 @@ export function ServersPage() {
     setInstallMode('compose')
     setInstallVersion('')
     setCommand('')
+    void loadInstallVersions(installChannel)
   }
 
   async function generateInstallCommand() {
@@ -769,7 +764,11 @@ export function ServersPage() {
             <FieldGroup>
               <Field>
                 <FieldLabel htmlFor="machine-install-channel">版本分支</FieldLabel>
-                <Select value={installChannel} disabled={Boolean(command) || installingId !== null} onValueChange={(value) => setInstallChannel(value as 'dev' | 'stable')}>
+                <Select value={installChannel} disabled={Boolean(command) || installingId !== null || versionsBusy} onValueChange={(value) => {
+                  const channel = value as 'dev' | 'stable'
+                  setInstallChannel(channel)
+                  void loadInstallVersions(channel)
+                }}>
                   <SelectTrigger id="machine-install-channel"><SelectValue /></SelectTrigger>
                   <SelectContent><SelectGroup><SelectItem value="dev">Dev（开发版）</SelectItem><SelectItem value="stable">主线（正式版）</SelectItem></SelectGroup></SelectContent>
                 </Select>
