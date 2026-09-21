@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useUsageApi } from "@/lib/usage-api";
-import { Tabs as TabsPrimitive } from "radix-ui";
 import {
   Trophy,
   Medal,
@@ -23,7 +22,7 @@ import {
   CardDescription,
   CardContent,
 } from "@/components/ui/card";
-import { TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -256,7 +255,7 @@ export function LeaderboardExplorer({
               </Card>
             ))}
           </div>
-          <TabsPrimitive.Root
+          <Tabs
             value={kind}
             onValueChange={(value) => {
               setKind(value as Kind);
@@ -490,7 +489,7 @@ export function LeaderboardExplorer({
                 </TabsContent>
               ))}
             </div>
-          </TabsPrimitive.Root>
+          </Tabs>
         </>
       )}
     </div>

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Tabs as TabsPrimitive } from "radix-ui";
 import {
   Activity,
   ArrowDown,
@@ -762,7 +761,7 @@ export function UsageExplorer({ selfOnly = false }: { selfOnly?: boolean }) {
               />
             </section>
           )}
-          <TabsPrimitive.Root
+          <Tabs
             value={tab}
             orientation="vertical"
             onValueChange={(value) => {
@@ -1422,7 +1421,7 @@ export function UsageExplorer({ selfOnly = false }: { selfOnly?: boolean }) {
                 </Card>
               </TabsContent>
             </div>
-          </TabsPrimitive.Root>
+          </Tabs>
           <Sheet
             open={Boolean(detail)}
             onOpenChange={(open) => {

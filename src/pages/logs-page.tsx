@@ -73,7 +73,7 @@ export function LogsPage() {
   return (
     <div className="mx-auto w-full max-w-[1600px]">
       <PageHeader
-        title="日志"
+        title="日志与存储"
         description="查询操作和运行记录，管理日志采集与保留。"
       />
       <div className="grid min-w-0 items-start gap-5 lg:grid-cols-[13.5rem_minmax(0,1fr)]">
@@ -82,7 +82,7 @@ export function LogsPage() {
           className="min-w-0 rounded-2xl border bg-card p-2 lg:sticky lg:top-16 lg:max-h-[calc(100dvh-5rem)] lg:overflow-y-auto lg:overscroll-contain"
         >
           <div className="flex justify-between px-2.5 pt-1 pb-2 text-xs text-muted-foreground">
-            <span>日志</span>
+            <span>日志与存储</span>
             <span className="lg:hidden">左右滑动切换分类</span>
           </div>
           <nav
