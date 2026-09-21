@@ -82,6 +82,7 @@ function UpdateWorkspace({ panelMode }: { panelMode: boolean }) {
   const [refresh, setRefresh] = useState(0)
   const [loading, setLoading] = useState(!certificatePreviewEnabled)
   const [error, setError] = useState("")
+  const [abortingId, setAbortingId] = useState<string | null>(null)
   useEffect(() => {
     if (certificatePreviewEnabled) return
     const controller = new AbortController()
@@ -100,6 +101,18 @@ function UpdateWorkspace({ panelMode }: { panelMode: boolean }) {
     setLoading(true)
     setRefresh(value => value + 1)
   }
+  async function abortTask(taskId: string) {
+    setAbortingId(taskId)
+    try {
+      await api.post("update/tasks/abort", { task_id: taskId })
+      toast.success("已中止任务；执行器未完成的动作以其本地恢复结果为准。")
+      reload()
+    } catch (reason) {
+      toast.error(updateError(reason))
+    } finally {
+      setAbortingId(null)
+    }
+  }
   const targets: UpdateTarget[] = !overview ? [] : panelMode
     ? overview.panel.components.map(item => ({ id: item.component, component: item.component, name: item.name, version: item.version, server: overview.panel.name, ready: overview.panel.updater_ready, reason: overview.panel.reason, updaterVersion: overview.panel.updater_version }))
     : overview.machines.flatMap(machine => machine.instances.map(instance => ({
@@ -116,8 +129,8 @@ function UpdateWorkspace({ panelMode }: { panelMode: boolean }) {
     {error && <Alert variant="destructive"><AlertTitle>无法读取更新信息</AlertTitle><AlertDescription>{error} 请稍后重新检查更新。</AlertDescription></Alert>}
     {loading ? <Skeleton className="h-64 w-full" role="status" aria-label="正在读取版本" /> : !error && <UpdateTable targets={targets} panelMode={panelMode} onCreated={reload} />}
     {overview && <Card><CardHeader><CardTitle>更新记录</CardTitle><CardDescription>查看更新结果，执行中的任务可通过检查更新刷新。</CardDescription></CardHeader><CardContent>
-      {!overview.tasks.length ? <Empty><EmptyHeader><EmptyTitle>暂无更新记录</EmptyTitle><EmptyDescription>创建更新任务后，可在这里查看进度和结果。</EmptyDescription></EmptyHeader></Empty> : <Table><TableHeader><TableRow><TableHead>更新对象</TableHead><TableHead>目标版本</TableHead><TableHead>状态</TableHead><TableHead>创建时间</TableHead></TableRow></TableHeader><TableBody>
-        {overview.tasks.map(task => <TableRow key={task.task_id}><TableCell>{task.target_name}{task.message && <p className="mt-1 max-w-72 whitespace-normal text-xs text-muted-foreground">{task.message}</p>}</TableCell><TableCell className="font-data">{task.target_version}</TableCell><TableCell><Badge variant={task.status === "failed" || task.status === "rollback_failed" ? "destructive" : "secondary"}>{updateStatusLabels[task.status] || task.status}</Badge></TableCell><TableCell className="font-data">{new Date(task.created_at).toLocaleString("zh-CN")}</TableCell></TableRow>)}
+      {!overview.tasks.length ? <Empty><EmptyHeader><EmptyTitle>暂无更新记录</EmptyTitle><EmptyDescription>创建更新任务后，可在这里查看进度和结果。</EmptyDescription></EmptyHeader></Empty> : <Table><TableHeader><TableRow><TableHead>更新对象</TableHead><TableHead>目标版本</TableHead><TableHead>状态</TableHead><TableHead>创建时间</TableHead><TableHead className="w-20">操作</TableHead></TableRow></TableHeader><TableBody>
+        {overview.tasks.map(task => <TableRow key={task.task_id}><TableCell>{task.target_name}{task.message && <p className="mt-1 max-w-72 whitespace-normal text-xs text-muted-foreground">{task.message}</p>}</TableCell><TableCell className="font-data">{task.target_version}</TableCell><TableCell><Badge variant={task.status === "failed" || task.status === "rollback_failed" ? "destructive" : "secondary"}>{updateStatusLabels[task.status] || task.status}</Badge></TableCell><TableCell className="font-data">{new Date(task.created_at).toLocaleString("zh-CN")}</TableCell><TableCell>{["succeeded", "failed", "rolled_back", "rollback_failed"].includes(task.status) ? null : <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-destructive hover:text-destructive" disabled={abortingId === task.task_id} onClick={() => void abortTask(task.task_id)}>{abortingId === task.task_id ? "中止中…" : "中止"}</Button>}</TableCell></TableRow>)}
       </TableBody></Table>}
     </CardContent></Card>}
   </div>
