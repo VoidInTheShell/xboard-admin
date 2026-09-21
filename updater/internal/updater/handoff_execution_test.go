@@ -219,3 +219,22 @@ func TestAdminHandoffRollsBackAdminAndUpdater(t *testing.T) {
 	}
 	t.Fatal("no rolled_back report")
 }
+
+func TestOneShotHandoffStopsAtTerminalJournal(t *testing.T) {
+	t.Setenv("XBOARD_UPDATER_HANDOFF_ONESHOT", "1")
+	agent := New(Config{StateDir: t.TempDir()})
+	journal := &Journal{Task: Task{Status: "succeeded"}}
+	if err := agent.save(journal); err != nil {
+		t.Fatal(err)
+	}
+	if !agent.oneShotHandoffComplete() {
+		t.Fatal("one-shot updater did not stop at a terminal journal")
+	}
+	journal.Task.Status = "preparing"
+	if err := agent.save(journal); err != nil {
+		t.Fatal(err)
+	}
+	if agent.oneShotHandoffComplete() {
+		t.Fatal("one-shot updater stopped before the handoff reached a terminal state")
+	}
+}

@@ -511,7 +511,7 @@ func (a *Agent) switchUpdater(ctx context.Context, j *Journal, image string) err
 	// alive until the target has adopted the durable handoff. Once the old
 	// service exits, cleanupPreviousUpdater creates the real Compose service.
 	handoffName := a.nextHandoffContainer(j)
-	if _, err := a.compose(ctx, j.Target, nil, "run", "--no-deps", "--rm", "--detach", "--pull", "never", "--name", handoffName, a.updaterService()); err != nil {
+	if _, err := a.compose(ctx, j.Target, nil, "run", "--no-deps", "--rm", "--detach", "--pull", "never", "--env", "XBOARD_UPDATER_HANDOFF_ONESHOT=1", "--name", handoffName, a.updaterService()); err != nil {
 		return err
 	}
 	containers, err := a.composeContainers(ctx, j.Target, a.updaterService())

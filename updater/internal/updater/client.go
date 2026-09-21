@@ -298,6 +298,26 @@ func (a *Agent) validateRunHandoff(handoff Handoff) error {
 	return errors.New("handoff target is not configured on this executor")
 }
 
+func (a *Agent) oneShotHandoffComplete() bool {
+	if os.Getenv("XBOARD_UPDATER_HANDOFF_ONESHOT") != "1" {
+		return false
+	}
+	raw, err := os.ReadFile(a.journalPath())
+	if err != nil {
+		return false
+	}
+	var journal Journal
+	if json.Unmarshal(raw, &journal) != nil {
+		return false
+	}
+	switch journal.Task.Status {
+	case "succeeded", "failed", "rolled_back", "rollback_failed":
+		return true
+	default:
+		return journal.Done
+	}
+}
+
 func (a *Agent) Run(ctx context.Context) error {
 	if err := os.MkdirAll(a.Config.StateDir, 0700); err != nil {
 		return err
@@ -358,6 +378,9 @@ func (a *Agent) Run(ctx context.Context) error {
 				return nil
 			}
 			fmt.Fprintln(os.Stderr, err)
+		}
+		if a.oneShotHandoffComplete() {
+			return nil
 		}
 		select {
 		case <-ctx.Done():

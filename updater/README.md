@@ -45,7 +45,8 @@ the target with `docker compose run --detach --rm --name …`, so a fixed
 `container_name` on the declared service cannot make Compose remove the old
 executor before the target is ready. After the old service exits, the target
 creates and starts the declared Compose service, records that stable name in the
-handoff journal, and exits; the temporary one-off container removes itself.
+handoff journal, and exits after the terminal handoff state is durable; the
+temporary one-off container removes itself.
 This preserves restart policy and keeps later `compose up` operations free of
 one-off-name conflicts.
 
