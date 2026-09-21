@@ -183,8 +183,33 @@ export function ServersPage() {
   const [installingId, setInstallingId] = React.useState<number | null>(null)
   const [installTarget, setInstallTarget] = React.useState<Machine | null>(null)
   const [installMode, setInstallMode] = React.useState<'compose' | 'docker' | 'systemd'>('compose')
+  const [installChannel, setInstallChannel] = React.useState<'dev' | 'stable'>('dev')
+  const [installVersions, setInstallVersions] = React.useState<string[]>([])
+  const [versionsBusy, setVersionsBusy] = React.useState(false)
   const [installVersion, setInstallVersion] = React.useState('')
   const [command, setCommand] = React.useState('')
+  React.useEffect(() => {
+    if (!installTarget || certificatePreviewEnabled) return
+    const controller = new AbortController()
+    setVersionsBusy(true)
+    api.get<{ version: string }[]>('update/node-releases', { channel: installChannel }, controller.signal)
+      .then((releases) => {
+        if (controller.signal.aborted) return
+        const versions = releases.map((item) => item.version)
+        setInstallVersions(versions)
+        setInstallVersion((current) => (versions.includes(current) ? current : versions[0] ?? ''))
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return
+        toast.error(getErrorMessage(error, '无法读取版本列表，请重试。'))
+        setInstallVersions([])
+        setInstallVersion('')
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setVersionsBusy(false)
+      })
+    return () => controller.abort()
+  }, [api, installTarget, installChannel])
   const [search, setSearch] = React.useState('')
   const machines = React.useMemo(() => query.data ?? [], [query.data])
   const filteredMachines = React.useMemo(() => {
@@ -255,7 +280,7 @@ export function ServersPage() {
     }
     setSaveBusy(true)
     try {
-      const result = await api.post<{ install_command?: string }>(
+      const result = await api.post<{ id?: number }>(
         'server/machine/save',
         {
           ...(edit.id ? { id: edit.id } : {}),
@@ -265,10 +290,24 @@ export function ServersPage() {
         },
       )
       setEdit(null)
-      setCommand(result?.install_command ?? '')
       selection.clear()
       query.reload()
       toast.success('服务器已保存')
+      // 新建服务器后直接进入安装引导：登记本身不会安装任何组件。
+      if (result?.id) {
+        setInstallTarget({
+          id: result.id,
+          name: edit.name.trim(),
+          notes: edit.notes?.trim() || null,
+          is_active: edit.is_active ?? true,
+          last_seen_at: null,
+          servers_count: 0,
+          load_status: null,
+          updater: null,
+        })
+        setInstallMode('compose')
+        setCommand('')
+      }
     } catch (error) {
       toast.error(getErrorMessage(error))
     } finally {
@@ -285,15 +324,15 @@ export function ServersPage() {
 
   async function generateInstallCommand() {
     if (!installTarget) return
-    if (!/^v\d+\.\d+\.\d+(?:-dev\.\d+\.\d+)?$/.test(installVersion.trim())) {
-      toast.error('请输入准确的 Xboard-Node Release 版本，例如 v1.14.0-dev.123.1。')
+    if (!installVersion) {
+      toast.error('请选择 Xboard-Node 版本。')
       return
     }
     setInstallingId(installTarget.id)
     try {
       const result = await api.post<{ command?: string }>(
         'server/machine/installCommand',
-        { id: installTarget.id, version: installVersion.trim(), mode: installMode },
+        { id: installTarget.id, version: installVersion, mode: installMode },
       )
       if (!result?.command) throw new Error('后端没有返回安装命令。')
       setCommand(result.command)
@@ -729,9 +768,22 @@ export function ServersPage() {
             <div className="rounded-xl border bg-muted/30 p-3 text-sm"><div className="font-medium">{installTarget.name}</div><div className="mt-1 text-xs text-muted-foreground">SID {installTarget.id} · {installStatusLabel(installTarget)}</div></div>
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="machine-install-version">Xboard-Node 准确版本</FieldLabel>
-                <Input id="machine-install-version" value={installVersion} disabled={Boolean(command) || installingId !== null} onChange={(event) => setInstallVersion(event.target.value)} placeholder="v1.14.0-dev.123.1" />
-                <FieldDescription>只接受已发布的准确 tag；不能使用 latest 或滚动地址。</FieldDescription>
+                <FieldLabel htmlFor="machine-install-channel">版本分支</FieldLabel>
+                <Select value={installChannel} disabled={Boolean(command) || installingId !== null} onValueChange={(value) => setInstallChannel(value as 'dev' | 'stable')}>
+                  <SelectTrigger id="machine-install-channel"><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectGroup><SelectItem value="dev">Dev（开发版）</SelectItem><SelectItem value="stable">主线（正式版）</SelectItem></SelectGroup></SelectContent>
+                </Select>
+                <FieldDescription>切换分支后重新读取该分支的已发布版本。</FieldDescription>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="machine-install-version">Xboard-Node 版本</FieldLabel>
+                <Select value={installVersion} disabled={Boolean(command) || installingId !== null || versionsBusy} onValueChange={setInstallVersion}>
+                  <SelectTrigger id="machine-install-version"><SelectValue placeholder={versionsBusy ? '正在读取版本…' : '选择版本'} /></SelectTrigger>
+                  <SelectContent><SelectGroup>
+                    {installVersions.map((version) => <SelectItem key={version} value={version}>{version}</SelectItem>)}
+                  </SelectGroup></SelectContent>
+                </Select>
+                <FieldDescription>仅列出已发布的准确版本，默认选择所选分支的最新版本；不能使用 latest 或滚动地址。</FieldDescription>
               </Field>
               <Field>
                 <FieldLabel htmlFor="machine-install-mode">安装方式</FieldLabel>
