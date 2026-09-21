@@ -117,6 +117,12 @@ jobs:
           go vet ./...
           go build -trimpath ./cmd/xboard-updater
 
+      - name: Run updater handoff recovery tests as root
+        working-directory: updater
+        # The Run-path recovery tests exercise secureOwner state chains that
+        # only exist for a root-owned directory hierarchy.
+        run: sudo "$(which go)" test ./internal/updater/ -run 'TestRun(RecoversExpiredWedgedHandoff|RetiresSupersededExecutorQuietly)' -count=1 -v
+
 
   prepare-release:
     name: Freeze version and release plan

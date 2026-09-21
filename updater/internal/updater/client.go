@@ -24,6 +24,30 @@ type Agent struct {
 func New(c Config) *Agent {
 	return &Agent{Config: c, Client: &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, Execute: command}
 }
+
+// executorLockWait bounds how long a starting updater waits for a concurrent
+// holder of executor.lock. The one-off handoff executor routinely starts
+// while the delegating process is still exiting; failing fast here would
+// abort the handoff and wedge the deployment.
+const executorLockWait = 90 * time.Second
+
+// handoffRecoveryGrace extends the handoff lease before the surviving old
+// executor treats the target as lost and converts the handoff into a rollback.
+const handoffRecoveryGrace = 5 * time.Minute
+
+// permanentAPIError marks a panel rejection that can never succeed on retry
+// (for example a report for a task the administrator already ended). Outbox
+// consumers drop these instead of retrying forever.
+type permanentAPIError struct{ err error }
+
+func (e permanentAPIError) Error() string { return e.err.Error() }
+func (e permanentAPIError) Unwrap() error { return e.err }
+
+func isPermanentAPIError(err error) bool {
+	var permanent permanentAPIError
+	return errors.As(err, &permanent)
+}
+
 func (a *Agent) api(ctx context.Context, action string, input any, output any) error {
 	token, err := os.ReadFile(a.Config.TokenFile)
 	if err != nil {
@@ -46,7 +70,11 @@ func (a *Agent) api(ctx context.Context, action string, input any, output any) e
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("update API %s returned HTTP %d", action, resp.StatusCode)
+		wrapped := fmt.Errorf("update API %s returned HTTP %d", action, resp.StatusCode)
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != http.StatusTooManyRequests {
+			return permanentAPIError{err: wrapped}
+		}
+		return wrapped
 	}
 	var envelope struct {
 		Data json.RawMessage `json:"data"`
@@ -139,6 +167,17 @@ func (a *Agent) handoffEvent(ctx context.Context, j *Journal, status, phase, mes
 func (a *Agent) flush(ctx context.Context, j *Journal) error {
 	for j.Ack < len(j.Events) {
 		if err := a.api(ctx, "report", j.Events[j.Ack], nil); err != nil {
+			if isPermanentAPIError(err) {
+				// The panel permanently rejected this receipt (typically the task
+				// was aborted or re-claimed elsewhere). The database is
+				// authoritative; drop the event instead of wedging the outbox.
+				fmt.Fprintln(os.Stderr, "dropping rejected update event:", err)
+				j.Ack++
+				if err := a.save(j); err != nil {
+					return err
+				}
+				continue
+			}
 			return err
 		}
 		j.Ack++
@@ -212,9 +251,17 @@ func (a *Agent) Cycle(ctx context.Context) error {
 						}
 					case HandoffTargetAdopted, HandoffAdminInstalling, HandoffVerifying:
 						if a.currentUpdaterVersion(&j) != handoff.ToUpdaterVersion {
-							return errHandoffTransferred
+							if !handoffLeaseExpired(handoff) {
+								return errHandoffTransferred
+							}
+							// The target adopted but died mid-flight and can no longer
+							// resume. The surviving old executor restores both sides.
+							if err = a.recoverHandoff(ctx, &j, "目标 Updater 中断且租约已过期，正在恢复原版本"); err != nil {
+								return err
+							}
+						} else {
+							return a.continueAdminHandoff(ctx, &j, handoff)
 						}
-						return a.continueAdminHandoff(ctx, &j, handoff)
 					case HandoffRollingBack:
 						if a.currentUpdaterVersion(&j) == handoff.FromUpdaterVersion {
 							return a.continueHandoffRollback(ctx, &j, handoff)
@@ -298,24 +345,189 @@ func (a *Agent) validateRunHandoff(handoff Handoff) error {
 	return errors.New("handoff target is not configured on this executor")
 }
 
+func (a *Agent) oneShot() bool {
+	return os.Getenv("XBOARD_UPDATER_HANDOFF_ONESHOT") == "1"
+}
+
 func (a *Agent) oneShotHandoffComplete() bool {
-	if os.Getenv("XBOARD_UPDATER_HANDOFF_ONESHOT") != "1" {
+	if !a.oneShot() {
 		return false
 	}
+	if raw, err := os.ReadFile(a.journalPath()); err == nil {
+		var journal Journal
+		if json.Unmarshal(raw, &journal) == nil {
+			switch journal.Task.Status {
+			case "succeeded", "failed", "rolled_back", "rollback_failed":
+				return true
+			default:
+				if journal.Done {
+					return true
+				}
+			}
+		}
+	}
+	// A one-off executor exists only for its handoff. Once the record is
+	// terminal there is nothing left for it to claim; a second executor must
+	// never keep running under a --rm container name.
+	handoff, err := LoadHandoff(a.Config.HandoffFile())
+	if err == nil && handoffTerminal(handoff.Phase) {
+		return true
+	}
+	return false
+}
+
+// lockExecutor acquires the executor lock, waiting out a concurrent holder.
+// The one-off handoff executor routinely starts while the delegating process
+// is still exiting, so an immediate failure would abort the handoff.
+func (a *Agent) lockExecutor() (func(), error) {
+	path := filepath.Join(a.Config.StateDir, "executor.lock")
+	deadline := time.Now().Add(executorLockWait)
+	for {
+		unlock, err := lock(path)
+		if err == nil {
+			return unlock, nil
+		}
+		if time.Now().After(deadline) {
+			return nil, err
+		}
+		time.Sleep(250 * time.Millisecond)
+	}
+}
+
+// handoffLeaseExpired reports whether the handoff lease has been dead long
+// enough that the target updater can no longer legitimately adopt it.
+func handoffLeaseExpired(h Handoff) bool {
+	expiry, err := time.Parse(time.RFC3339, h.Lease.ExpiresAt)
+	if err != nil {
+		return true
+	}
+	return time.Now().UTC().After(expiry.Add(handoffRecoveryGrace))
+}
+
+// retireSupersededHandoff runs before the executor lock is taken. While a
+// non-terminal handoff assigns the active work to another updater version,
+// this process must retire quietly: exiting fast keeps the old container
+// stoppable so the Compose promotion can replace it, and avoids fighting the
+// target for the lock. When the handoff lease has expired without progress,
+// the surviving old executor converts the handoff into a rollback instead of
+// crash-looping forever.
+func (a *Agent) retireSupersededHandoff(ctx context.Context) (bool, error) {
+	handoff, err := LoadHandoff(a.Config.HandoffFile())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	if handoffTerminal(handoff.Phase) {
+		return false, nil
+	}
+	self := BuildVersion()
+	switch handoff.Phase {
+	case HandoffTargetBooting, HandoffTargetAdopted, HandoffAdminInstalling, HandoffVerifying:
+		if self == handoff.ToUpdaterVersion {
+			return false, nil
+		}
+		if !handoffLeaseExpired(handoff) {
+			// The target updater owns the task. Exit quietly; the restart
+			// policy brings this process back as a watchdog until the
+			// promotion removes the old container or the lease expires.
+			return true, nil
+		}
+		return true, a.recoverExpiredHandoff(ctx)
+	case HandoffRollingBack:
+		switch {
+		case self == handoff.FromUpdaterVersion && a.oneShot():
+			return false, nil
+		case self == handoff.FromUpdaterVersion:
+			if _, statErr := os.Stat(a.journalPath()); os.IsNotExist(statErr) {
+				return true, a.closeOrphanedRollback(handoff)
+			}
+			// The stable service must not run the rollback against its own
+			// container; delegate to a one-off from-version executor.
+			return true, a.delegateHandoffRollback(ctx, handoff)
+		case self == handoff.ToUpdaterVersion:
+			// The from-version one-off executor owns the rollback.
+			return true, nil
+		default:
+			return false, errors.New("rollback updater handoff belongs to an unknown version")
+		}
+	case HandoffPrepared:
+		if self != handoff.FromUpdaterVersion {
+			return false, errors.New("prepared handoff belongs to another updater version")
+		}
+		return false, nil
+	default:
+		return false, errors.New("unfinished updater handoff requires explicit adoption or rollback")
+	}
+}
+
+// recoverExpiredHandoff performs one locked Cycle so the existing recovery
+// branches can convert a wedged handoff into a rollback. The process exits
+// afterwards; the restart policy brings it back as the normal service.
+func (a *Agent) recoverExpiredHandoff(ctx context.Context) error {
+	unlock, err := a.lockExecutor()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	current, err := LoadHandoff(a.Config.HandoffFile())
+	if err != nil {
+		return err
+	}
+	if handoffTerminal(current.Phase) || !handoffLeaseExpired(current) {
+		// The handoff progressed while this process waited for the lock.
+		return nil
+	}
+	if _, statErr := os.Stat(a.journalPath()); os.IsNotExist(statErr) {
+		// The task journal is gone: there is nothing left to roll back through
+		// Cycle. Close the record so restarts stop attempting recovery.
+		if current.Phase == HandoffRollingBack {
+			return closeHandoffRecord(&current)
+		}
+		return errors.New("expired updater handoff has no local journal; manual recovery required")
+	}
+	return a.Cycle(ctx)
+}
+
+// closeOrphanedRollback closes a rolling-back handoff whose task journal no
+// longer exists. Nothing is left to restore, so the record must not keep the
+// executor retiring forever.
+func (a *Agent) closeOrphanedRollback(handoff Handoff) error {
+	unlock, err := a.lockExecutor()
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	current, err := LoadHandoff(a.Config.HandoffFile())
+	if err != nil {
+		return err
+	}
+	if current.Phase != HandoffRollingBack {
+		return nil
+	}
+	if _, statErr := os.Stat(a.journalPath()); !os.IsNotExist(statErr) {
+		return nil
+	}
+	return closeHandoffRecord(&current)
+}
+
+// delegateHandoffRollback starts a one-off executor of the previous updater
+// version to finish a rolling-back handoff. The stable process exits right
+// after the delegation so the promotion can replace its container.
+func (a *Agent) delegateHandoffRollback(ctx context.Context, handoff Handoff) error {
 	raw, err := os.ReadFile(a.journalPath())
 	if err != nil {
-		return false
+		return fmt.Errorf("rollback handoff has no local journal: %w", err)
 	}
-	var journal Journal
-	if json.Unmarshal(raw, &journal) != nil {
-		return false
+	var j Journal
+	if err = json.Unmarshal(raw, &j); err != nil {
+		return err
 	}
-	switch journal.Task.Status {
-	case "succeeded", "failed", "rolled_back", "rollback_failed":
-		return true
-	default:
-		return journal.Done
+	if j.Task.ID != handoff.TaskID {
+		return errors.New("rollback handoff does not match the active journal")
 	}
+	return a.switchUpdater(ctx, &j, rollbackUpdaterImage(handoff))
 }
 
 func (a *Agent) Run(ctx context.Context) error {
@@ -328,7 +540,14 @@ func (a *Agent) Run(ctx context.Context) error {
 	if err := os.Chmod(a.Config.StateDir, 0700); err != nil {
 		return err
 	}
-	unlock, err := lock(filepath.Join(a.Config.StateDir, "executor.lock"))
+	retired, err := a.retireSupersededHandoff(ctx)
+	if err != nil {
+		return err
+	}
+	if retired {
+		return nil
+	}
+	unlock, err := a.lockExecutor()
 	if err != nil {
 		return err
 	}
@@ -341,7 +560,9 @@ func (a *Agent) Run(ctx context.Context) error {
 			// The target image proves its identity through the build version,
 			// then performs the adoption while this process owns executor.lock.
 			if BuildVersion() != handoff.ToUpdaterVersion {
-				return errors.New("unfinished updater handoff requires the target updater version")
+				// Another version superseded this process between the pre-lock
+				// retirement check and the lock. Never fight the target.
+				return nil
 			}
 			adopted, err := adoptHandoffFileLocked(a.Config.HandoffFile(), a.Config.StateDir, a.handoffOwner(), handoff.TaskID, handoff.InstanceID)
 			if err != nil {
@@ -351,18 +572,36 @@ func (a *Agent) Run(ctx context.Context) error {
 				return fmt.Errorf("invalid adopted updater handoff: %w", err)
 			}
 		case HandoffTargetAdopted, HandoffAdminInstalling, HandoffVerifying:
+			if BuildVersion() != handoff.ToUpdaterVersion {
+				// The target updater owns the task; retire quietly instead of
+				// crash-looping against a live handoff.
+				return nil
+			}
 			if err := a.validateRunHandoff(handoff); err != nil {
 				return fmt.Errorf("invalid adopted updater handoff: %w", err)
 			}
-			if BuildVersion() != handoff.ToUpdaterVersion {
-				return errors.New("adopted updater handoff belongs to another target version")
-			}
 		case HandoffRollingBack:
+			if BuildVersion() == handoff.ToUpdaterVersion {
+				// The from-version one-off executor owns the rollback.
+				return nil
+			}
+			if BuildVersion() != handoff.FromUpdaterVersion {
+				return errors.New("rollback updater handoff belongs to an unknown version")
+			}
+			if !a.oneShot() {
+				// The stable service must not run the rollback against its own
+				// container; delegate to a one-off from-version executor.
+				return a.delegateHandoffRollback(ctx, handoff)
+			}
 			if err := a.validateRunHandoff(handoff); err != nil {
 				return fmt.Errorf("invalid rollback updater handoff: %w", err)
 			}
-			if BuildVersion() != handoff.FromUpdaterVersion && BuildVersion() != handoff.ToUpdaterVersion {
-				return errors.New("rollback updater handoff belongs to an unknown version")
+		case HandoffPrepared:
+			// The previous executor died between preparing the handoff and
+			// starting the target. Cycle's recovery branch rolls it back while
+			// this process owns the lock.
+			if BuildVersion() != handoff.FromUpdaterVersion {
+				return errors.New("prepared handoff belongs to another updater version")
 			}
 		default:
 			return errors.New("unfinished updater handoff requires explicit adoption or rollback")
@@ -371,6 +610,9 @@ func (a *Agent) Run(ctx context.Context) error {
 		return fmt.Errorf("invalid updater handoff: %w", err)
 	}
 	for {
+		if a.oneShotHandoffComplete() {
+			return nil
+		}
 		if err = a.Cycle(ctx); err != nil {
 			if errors.Is(err, errHandoffTransferred) {
 				// The Compose operation started the target updater. Exiting this
@@ -378,9 +620,6 @@ func (a *Agent) Run(ctx context.Context) error {
 				return nil
 			}
 			fmt.Fprintln(os.Stderr, err)
-		}
-		if a.oneShotHandoffComplete() {
-			return nil
 		}
 		select {
 		case <-ctx.Done():

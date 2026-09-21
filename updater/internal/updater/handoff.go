@@ -158,6 +158,18 @@ func TransitionHandoff(h *Handoff, phase string) error {
 	return nil
 }
 
+// closeHandoffRecord drives an unfinished handoff to rolled_back through the
+// valid transition chain. It is used when the task journal is gone and no
+// side of the release needs restoration.
+func closeHandoffRecord(h *Handoff) error {
+	if h.Phase != HandoffRollingBack {
+		if err := TransitionHandoff(h, HandoffRollingBack); err != nil {
+			return err
+		}
+	}
+	return TransitionHandoff(h, HandoffRolledBack)
+}
+
 // AdoptHandoff transfers the recovery lease to the target updater. A repeated
 // adoption by the same owner is intentionally idempotent so a retried
 // one-shot handoff process cannot execute the task twice.

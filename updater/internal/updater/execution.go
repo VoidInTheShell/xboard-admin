@@ -21,6 +21,7 @@ const (
 	defaultUpdaterContainer = "xboard-updater"
 	defaultUpdaterService   = "xboard-updater"
 	defaultHandoffOwner     = "xboard-updater-handoff"
+	updaterImageRepository  = "ghcr.io/voidintheshell/xboard-admin-updater"
 )
 
 func command(ctx context.Context, name string, args ...string) ([]byte, error) {
@@ -107,14 +108,32 @@ func (a *Agent) currentUpdaterVersion(j *Journal) string {
 }
 
 func (a *Agent) updaterImage(j *Journal) string {
-	if a.Config.UpdaterImage != "" {
-		return a.Config.UpdaterImage
+	// The running binary is the source of truth. The bootstrap writes
+	// updater_image once at deployment time; the config value goes stale after
+	// every later deploy or self-update and must never override the build
+	// version when rolling back.
+	version := ""
+	if versionPattern.MatchString(BuildVersion()) {
+		version = BuildVersion()
+	} else {
+		// Unversioned development builds fall back to the config image and
+		// finally the task's previous version; published updaters never do.
+		version = a.currentUpdaterVersion(j)
 	}
-	version := a.currentUpdaterVersion(j)
-	if version == "" {
-		return ""
+	if version != "" {
+		return updaterImageRepository + ":" + version
 	}
-	return "ghcr.io/voidintheshell/xboard-admin-updater:" + version
+	return a.Config.UpdaterImage
+}
+
+// rollbackUpdaterImage resolves the image a rollback must switch back to.
+// Handoff records written by older updaters may pin a stale bootstrap image;
+// the from version is authoritative whenever it is usable.
+func rollbackUpdaterImage(handoff Handoff) string {
+	if versionPattern.MatchString(handoff.FromUpdaterVersion) {
+		return updaterImageRepository + ":" + handoff.FromUpdaterVersion
+	}
+	return handoff.Previous.UpdaterImage
 }
 
 func (a *Agent) handoffOwner() string { return defaultHandoffOwner }
@@ -215,7 +234,7 @@ func (a *Agent) cleanupPreviousUpdater(ctx context.Context, t Target, handoff Ha
 		return nil
 	}
 	previousGone := false
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 60; i++ {
 		status, err := a.exec(ctx, "docker", "inspect", "--format", "{{.State.Status}}", previous)
 		if err != nil {
 			previousGone = true
@@ -230,7 +249,10 @@ func (a *Agent) cleanupPreviousUpdater(ctx context.Context, t Target, handoff Ha
 			previousGone = true
 			break
 		}
-		time.Sleep(250 * time.Millisecond)
+		// The old service exits with code 0 while superseded and is restarted
+		// by its restart policy with growing backoff; a one-minute window is
+		// enough to catch a non-running moment for removal.
+		time.Sleep(time.Second)
 	}
 	if !previousGone {
 		return errors.New("previous updater container did not stop")
@@ -401,6 +423,9 @@ func (a *Agent) adminHandoff(j *Journal) (Handoff, error) {
 	executorID := a.Config.ExecutorID
 	if executorID == "" {
 		executorID = "panel-executor"
+	}
+	if len(j.Task.ID) < 8 {
+		return Handoff{}, errors.New("handoff task identity is too short")
 	}
 	now := time.Now().UTC()
 	handoff := Handoff{
@@ -846,9 +871,13 @@ func (a *Agent) recoverHandoff(ctx context.Context, j *Journal, reason string) e
 		if err = a.save(j); err != nil {
 			return err
 		}
-		if err = a.switchUpdater(ctx, j, handoff.Previous.UpdaterImage); err != nil {
+		if err = a.switchUpdater(ctx, j, rollbackUpdaterImage(handoff)); err != nil {
 			return a.rollbackFailedHandoff(ctx, j, handoff, "恢复旧 Updater 失败")
 		}
+	} else if err = a.setComposeServiceImage(j.Target, a.updaterService(), rollbackUpdaterImage(handoff)); err != nil {
+		// Already on the from version: keep the Compose override consistent so
+		// a later `compose up` cannot silently resurrect the target image.
+		return a.rollbackFailedHandoff(ctx, j, handoff, "无法固定回退后的 Updater 镜像")
 	}
 	result := map[string]any{"version": j.Previous, "updater_version": handoff.FromUpdaterVersion}
 	if err = a.handoffEvent(ctx, j, "rolled_back", HandoffRolledBack, "更新未完成，Admin 与 Updater 已恢复并验证", result, ""); err != nil {
@@ -892,7 +921,9 @@ func (a *Agent) continueAdminHandoff(ctx context.Context, j *Journal, handoff Ha
 		return errors.New("Admin handoff is running on the wrong updater version")
 	}
 	if handoff.Phase == HandoffTargetBooting {
-		adopted, err := AdoptHandoffFile(a.Config.HandoffFile(), a.Config.StateDir, a.handoffOwner(), handoff.TaskID, handoff.InstanceID)
+		// Run already holds executor.lock; adopting through the locking helper
+		// from the same process would always fail on the held flock.
+		adopted, err := adoptHandoffFileLocked(a.Config.HandoffFile(), a.Config.StateDir, a.handoffOwner(), handoff.TaskID, handoff.InstanceID)
 		if err != nil {
 			return err
 		}
