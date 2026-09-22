@@ -22,7 +22,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useAdminApi } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 import { certificatePreviewEnabled } from "@/lib/control-plane/certificate-types"
-import { newestRelease, versionChannel, updateError, updateStatusLabels, type UpdateChannel, type UpdateOverview, type UpdateRelease, type UpdateTarget } from "@/lib/updates"
+import { newestRelease, versionChannel, updateError, updateStatusLabels, type UpdateChannel, type UpdateOverview, type UpdateRelease, type UpdateTarget, type UpdateTask } from "@/lib/updates"
 
 const sections = [
   { id: "panel", title: "面板更新", description: "用户后台、管理后台与后端", icon: Monitor },
