@@ -5,6 +5,7 @@ import { toast } from "sonner"
 import { PageHeader } from "@/components/layout/page-header"
 import { ResourcePagination } from "@/components/control-plane/resource-pagination"
 import { CatalogNavigation } from "@/components/control-plane/catalog-navigation"
+import { StatusBadge } from "@/components/data/status-badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -125,7 +126,7 @@ function UpdateWorkspace({ panelMode }: { panelMode: boolean }) {
       <div><h2 className="text-lg font-semibold">{panelMode ? "面板更新" : "节点客户端更新"}</h2><p className="mt-1 text-sm text-muted-foreground">{panelMode ? "分别选择用户后台、管理后台或后端更新。" : "以实例为单位更新，同一实例承载的入站会一起重启。"}</p></div>
       <Button variant="outline" onClick={reload} disabled={loading}><RefreshCw data-icon="inline-start" />{loading ? "正在检查" : "检查更新"}</Button>
     </div>
-    {overview && panelMode && <Card><CardHeader><CardTitle>Admin 更新包</CardTitle><CardDescription>Admin 与 Updater 使用同一个 Release 版本，不能分别选择。</CardDescription></CardHeader><CardContent><div className="grid gap-3 sm:grid-cols-3"><div><p className="text-xs text-muted-foreground">Admin 版本</p><p className="mt-1 font-data text-sm">{overview.panel.components.find(item => item.component === "xboard-admin")?.version || "尚未上报"}</p></div><div><p className="text-xs text-muted-foreground">Updater 版本</p><p className="mt-1 font-data text-sm">{overview.panel.updater_version || "尚未上报"}</p></div><div><p className="text-xs text-muted-foreground">状态</p><Badge className="mt-1" variant={overview.panel.updater_ready ? "secondary" : "outline"}>{overview.panel.handoff_status || (overview.panel.updater_ready ? "可升级" : "等待 Updater 心跳")}</Badge></div></div>{overview.panel.updater_version && overview.panel.components.find(item => item.component === "xboard-admin")?.version !== overview.panel.updater_version && <p className="mt-3 text-sm text-destructive">Admin 与 Updater 版本不一致，已暂停面板升级入口。</p>}</CardContent></Card>}
+    {overview && panelMode && <Card><CardHeader><CardTitle>Admin 更新包</CardTitle><CardDescription>Admin 与 Updater 使用同一个 Release 版本，不能分别选择。</CardDescription></CardHeader><CardContent><div className="grid gap-3 sm:grid-cols-3"><div><p className="text-xs text-muted-foreground">Admin 版本</p><p className="mt-1 font-data text-sm">{overview.panel.components.find(item => item.component === "xboard-admin")?.version || "尚未上报"}</p></div><div><p className="text-xs text-muted-foreground">Updater 版本</p><p className="mt-1 font-data text-sm">{overview.panel.updater_version || "尚未上报"}</p></div><div><p className="text-xs text-muted-foreground">更新器状态</p><Badge className="mt-1" variant={overview.panel.updater_ready ? "secondary" : "outline"}>{overview.panel.handoff_status || (overview.panel.updater_ready ? "Updater 就绪" : "等待 Updater 心跳")}</Badge></div></div>{overview.panel.updater_version && overview.panel.components.find(item => item.component === "xboard-admin")?.version !== overview.panel.updater_version && <p className="mt-3 text-sm text-destructive">Admin 与 Updater 版本不一致，已暂停面板升级入口。</p>}</CardContent></Card>}
     {error && <Alert variant="destructive"><AlertTitle>无法读取更新信息</AlertTitle><AlertDescription>{error} 请稍后重新检查更新。</AlertDescription></Alert>}
     {loading ? <Skeleton className="h-64 w-full" role="status" aria-label="正在读取版本" /> : !error && <UpdateTable targets={targets} panelMode={panelMode} onCreated={reload} />}
     {overview && <Card><CardHeader><CardTitle>更新记录</CardTitle><CardDescription>查看更新结果，执行中的任务可通过检查更新刷新。</CardDescription></CardHeader><CardContent>
@@ -207,13 +208,24 @@ function UpdateTable({ targets, panelMode, onCreated }: { targets: UpdateTarget[
           const check = checks[target.id]
           const latest = newestRelease(check?.releases || [], channel)
           const newer = latest && newestRelease([...check.releases, { ...latest, version: target.version! }], channel)?.version !== target.version
+          const statusBadge = !target.ready
+            ? <StatusBadge tone="neutral" label="不可升级" />
+            : !channel
+              ? <StatusBadge tone="neutral" label="分支未知" />
+              : !check
+                ? <StatusBadge tone="neutral" label="检测中" />
+                : check.error
+                  ? <StatusBadge tone="neutral" label="检测失败" />
+                  : newer
+                    ? <StatusBadge tone="success" label="可更新" />
+                    : <StatusBadge tone="neutral" label="已是最新" />
           return <TableRow key={target.id} data-state={selected.includes(target.id) ? "selected" : undefined}>
             {!panelMode && <TableCell className="pl-4"><Checkbox aria-label={`选择 ${target.name}`} disabled={!target.ready} checked={selected.includes(target.id)} onCheckedChange={checked => setSelected(previous => checked === true ? [...new Set([...previous, target.id])] : previous.filter(id => id !== target.id))} /></TableCell>}
             <TableCell className={cn("py-4", panelMode && "pl-4")}><div className="font-medium">{target.name}</div><div className="mt-1 text-xs text-muted-foreground">{panelMode ? target.component : `ID ${target.instanceId} · ${target.method}`}</div>{target.updaterVersion && <div className="mt-1 font-data text-[11px] text-muted-foreground">Updater {target.updaterVersion}</div>}</TableCell>
             {!panelMode && <TableCell>{target.server}</TableCell>}
             <TableCell><div className="font-data text-xs">{target.version || "尚未上报"}</div><div className="mt-1 text-xs text-muted-foreground">{channel ? channelNames[channel] : "分支未知"}</div></TableCell>
             <TableCell><div className="font-data text-xs">{!channel ? "请选择升级版本" : !check ? "检测中…" : check.error ? "检测失败" : latest?.version || "暂无发布"}</div><div className="mt-1 max-w-56 whitespace-normal text-xs text-muted-foreground">{check?.error || (latest ? newer ? "有新版本" : latest.version === target.version ? "已是最新版本" : "当前版本高于已发布版本" : "")}</div></TableCell>
-            <TableCell><Badge variant="outline">{target.ready ? "可升级" : "不可升级"}</Badge>{!target.ready && <p className="mt-1 max-w-40 whitespace-normal text-xs text-muted-foreground">{target.reason || "更新器未就绪"}</p>}</TableCell>
+            <TableCell>{statusBadge}{!target.ready && <p className="mt-1 max-w-40 whitespace-normal text-xs text-muted-foreground">{target.reason || "更新器未就绪"}</p>}</TableCell>
             <TableCell className="pr-4 text-right"><Button variant="outline" aria-label={`升级 ${target.name}`} disabled={!target.ready} onClick={() => setEditing([target])}><ArrowUpCircle data-icon="inline-start" />升级</Button></TableCell>
           </TableRow>
         })}</TableBody>
