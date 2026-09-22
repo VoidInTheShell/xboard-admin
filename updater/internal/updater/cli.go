@@ -2,6 +2,7 @@ package updater
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -10,12 +11,13 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 // CLI runs as a separate service, never as a goroutine inside the node being replaced.
 func CLI(args []string) error {
 	if len(args) == 0 {
-		return errors.New("usage: xboard-updater run|install|check --config /etc/xboard-updater/config.json")
+		return errors.New("usage: xboard-updater run|install|check|recover --config /etc/xboard-updater/config.json")
 	}
 	if args[0] == "handoff" {
 		if len(args) < 2 {
@@ -61,6 +63,79 @@ func CLI(args []string) error {
 		default:
 			return errors.New("usage: xboard-updater handoff validate|adopt --path /var/lib/xboard-updater/handoff.json")
 		}
+	}
+	// recover archives corrupted local state (journal/handoff) after an
+	// operator has verified the instances. A degraded executor keeps
+	// heartbeating but refuses tasks; this command is the controlled way out.
+	if args[0] == "recover" {
+		flags := flag.NewFlagSet("recover", flag.ContinueOnError)
+		path := flags.String("config", "/etc/xboard-updater/config.json", "absolute path to host-owned updater configuration")
+		yes := flags.Bool("yes", false, "archive the corrupted state files (default is a dry run)")
+		if err := flags.Parse(args[1:]); err != nil {
+			return err
+		}
+		if !filepath.IsAbs(*path) || strings.ContainsAny(*path, "\n\r\"%") {
+			return errors.New("invalid absolute config path")
+		}
+		if runtime.GOOS == "linux" {
+			if os.Geteuid() != 0 {
+				return errors.New("recover requires root")
+			}
+			if err := secureOwner(*path); err != nil {
+				return err
+			}
+		}
+		c, err := Load(*path)
+		if err != nil {
+			return err
+		}
+		unlock, err := lock(filepath.Join(c.StateDir, "executor.lock"))
+		if err != nil {
+			return fmt.Errorf("another updater process holds the executor lock: %w", err)
+		}
+		defer unlock()
+		type finding struct {
+			path, reason string
+		}
+		var findings []finding
+		journalPath := filepath.Join(c.StateDir, "active.json")
+		if raw, readErr := os.ReadFile(journalPath); readErr == nil {
+			var j Journal
+			if json.Unmarshal(raw, &j) != nil {
+				findings = append(findings, finding{journalPath, "journal is not valid JSON"})
+			} else {
+				fmt.Printf("Journal %s is readable (task %s, status %s); left in place.\n", journalPath, j.Task.ID, j.Task.Status)
+			}
+		} else if !os.IsNotExist(readErr) {
+			findings = append(findings, finding{journalPath, fmt.Sprintf("journal unreadable: %v", readErr)})
+		}
+		handoffPath := c.HandoffFile()
+		if _, handoffErr := LoadHandoff(handoffPath); handoffErr != nil && !os.IsNotExist(handoffErr) {
+			findings = append(findings, finding{handoffPath, fmt.Sprintf("handoff record is invalid: %v", handoffErr)})
+		} else if handoffErr == nil {
+			fmt.Printf("Handoff record %s is valid; left in place.\n", handoffPath)
+		}
+		if len(findings) == 0 {
+			fmt.Println("No corrupted updater state files found; nothing to recover.")
+			return nil
+		}
+		for _, f := range findings {
+			if !*yes {
+				fmt.Printf("DRY-RUN: would archive %s (%s)\n", f.path, f.reason)
+				continue
+			}
+			dst := fmt.Sprintf("%s.corrupt-%d", f.path, time.Now().UTC().Unix())
+			if renameErr := os.Rename(f.path, dst); renameErr != nil {
+				return fmt.Errorf("archive %s: %w", f.path, renameErr)
+			}
+			fmt.Printf("Archived %s -> %s (%s)\n", f.path, dst, f.reason)
+		}
+		if !*yes {
+			fmt.Println("Re-run with --yes to archive the corrupted files, then verify instance health and restart the updater service.")
+			return nil
+		}
+		fmt.Println("Corrupted state archived. Verify instance health manually, then restart the updater service (systemctl restart xboard-updater or docker compose up -d).")
+		return nil
 	}
 	flags := flag.NewFlagSet("updater", flag.ContinueOnError)
 	path := flags.String("config", "/etc/xboard-updater/config.json", "absolute path to host-owned updater configuration")

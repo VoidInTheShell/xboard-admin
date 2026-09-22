@@ -131,9 +131,10 @@ func Load(path string) (Config, error) {
 	if err != nil {
 		return c, err
 	}
-	decoder := json.NewDecoder(strings.NewReader(string(raw)))
-	decoder.DisallowUnknownFields()
-	if err = decoder.Decode(&c); err != nil {
+	// Unknown fields are tolerated: a config written by a newer deployment
+	// must not stop a rolled-back updater from starting. Validate() still
+	// checks every field that matters.
+	if err = json.Unmarshal(raw, &c); err != nil {
 		return c, err
 	}
 	if err = c.Validate(); err != nil {
@@ -234,7 +235,17 @@ func (t Task) Validate(target Target) error {
 	if strings.Contains(t.Version, "-dev.") {
 		channel = "dev"
 	}
-	if !versionPattern.MatchString(t.Version) || t.Component != target.Component || t.InstanceID != target.ID || m.Schema != 2 || m.Component != t.Component || m.Version != t.Version || m.Channel != channel || m.Repository != repositories[t.Component] || !regexp.MustCompile(`^[0-9a-fA-F]{40}$`).MatchString(m.SourceCommit) || m.Compatibility.Panel != 1 || m.Compatibility.Update != UpdateProtocol || m.Compatibility.State != UpdaterStateSchema {
+	// Compatibility is a floor, not an exact match: a release declaring a
+	// newer protocol can only be executed by the newer updater that ships
+	// with it. For the Admin component this executor merely prepares the
+	// handoff and the target updater executes the task, so any protocol at
+	// or above the floor is accepted. Other components are executed by this
+	// process and must stay within the supported range.
+	protocolOK := m.Compatibility.Update >= UpdateProtocolMin && m.Compatibility.Update <= UpdateProtocol
+	if t.Component == "xboard-admin" {
+		protocolOK = m.Compatibility.Update >= UpdateProtocolMin
+	}
+	if !versionPattern.MatchString(t.Version) || t.Component != target.Component || t.InstanceID != target.ID || m.Schema != 2 || m.Component != t.Component || m.Version != t.Version || m.Channel != channel || m.Repository != repositories[t.Component] || !regexp.MustCompile(`^[0-9a-fA-F]{40}$`).MatchString(m.SourceCommit) || m.Compatibility.Panel < 1 || !protocolOK || m.Compatibility.State < 1 || m.Compatibility.State > UpdaterStateSchema {
 		return errors.New("task release identity or compatibility mismatch")
 	}
 	expectedImage := "ghcr.io/voidintheshell/" + t.Component + ":" + t.Version

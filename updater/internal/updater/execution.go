@@ -24,14 +24,37 @@ const (
 	updaterImageRepository  = "ghcr.io/voidintheshell/xboard-admin-updater"
 )
 
+// commandTimeoutKey lets specific call sites (for example slow image pulls)
+// request a longer ceiling than the default 15-minute command timeout without
+// changing the Agent.Execute contract used by tests.
+type commandTimeoutKey struct{}
+
+// withCommandTimeout returns a context whose direct command executions use the
+// given ceiling instead of the default.
+func withCommandTimeout(ctx context.Context, timeout time.Duration) context.Context {
+	return context.WithValue(ctx, commandTimeoutKey{}, timeout)
+}
+
 func command(ctx context.Context, name string, args ...string) ([]byte, error) {
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
+	timeout := 15 * time.Minute
+	if requested, ok := ctx.Value(commandTimeoutKey{}).(time.Duration); ok && requested > 0 {
+		timeout = requested
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	if name == "docker" {
 		args = append([]string{"--host", "unix:///var/run/docker.sock"}, args...)
 	}
 	output, err := exec.CommandContext(ctx, name, args...).Output()
 	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && len(exitErr.Stderr) > 0 {
+			detail := strings.TrimSpace(string(exitErr.Stderr))
+			if len(detail) > 600 {
+				detail = "…" + detail[len(detail)-600:]
+			}
+			return nil, fmt.Errorf("%s command failed: %s", filepath.Base(name), detail)
+		}
 		return nil, fmt.Errorf("%s command failed", filepath.Base(name))
 	}
 	return output, nil
@@ -331,10 +354,15 @@ func (a *Agent) current(ctx context.Context, t Target) (string, error) {
 	}
 	return v, nil
 }
+// imagePullTimeout is the ceiling for image pulls. Backend images can exceed a
+// gigabyte; on slow links the previous shared 15-minute ceiling aborted healthy
+// pulls and blocked updates that would otherwise have succeeded.
+const imagePullTimeout = 45 * time.Minute
+
 func (a *Agent) healthy(ctx context.Context, t Target, version string) error {
-	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
-	for attempt := 0; attempt < 30; attempt++ {
+	for attempt := 0; attempt < 150; attempt++ {
 		current, err := a.current(ctx, t)
 		if err == nil && current == version {
 			request, e := http.NewRequestWithContext(ctx, "GET", t.HealthURL, nil)
@@ -692,7 +720,7 @@ func (a *Agent) prepare(ctx context.Context, j *Journal) error {
 				}
 			}
 		}
-		if _, e = a.exec(ctx, "docker", "pull", j.Task.Manifest.TargetImage()); e != nil {
+		if _, e = a.exec(withCommandTimeout(ctx, imagePullTimeout), "docker", "pull", j.Task.Manifest.TargetImage()); e != nil {
 			return e
 		}
 		if j.Target.Component == "xboard" {
@@ -709,7 +737,7 @@ func (a *Agent) prepare(ctx context.Context, j *Journal) error {
 			if strings.TrimSpace(j.Task.Manifest.Artifacts.UpdaterImage) == "" {
 				return errors.New("Admin release has no trusted updater image")
 			}
-			if _, e = a.exec(ctx, "docker", "pull", j.Task.Manifest.Artifacts.UpdaterImage); e != nil {
+			if _, e = a.exec(withCommandTimeout(ctx, imagePullTimeout), "docker", "pull", j.Task.Manifest.Artifacts.UpdaterImage); e != nil {
 				return e
 			}
 		}

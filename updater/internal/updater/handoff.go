@@ -211,9 +211,9 @@ func validateHandoffJournal(stateDir string, h Handoff) error {
 		return errors.New("handoff adoption requires the active updater journal")
 	}
 	var journal Journal
-	decoder := json.NewDecoder(strings.NewReader(string(raw)))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&journal); err != nil {
+	// Unknown fields are tolerated: a newer updater may have extended the
+	// journal before this (possibly rolled-back) version reads it.
+	if err = json.Unmarshal(raw, &journal); err != nil {
 		return errors.New("handoff adoption found an invalid updater journal")
 	}
 	if journal.Task.ID != h.TaskID || journal.Task.InstanceID != h.InstanceID || journal.Task.Version != h.ToVersion || journal.Task.Sequence < h.JournalSequence {
@@ -277,9 +277,10 @@ func LoadHandoff(path string) (Handoff, error) {
 	if err != nil {
 		return handoff, err
 	}
-	decoder := json.NewDecoder(strings.NewReader(string(raw)))
-	decoder.DisallowUnknownFields()
-	if err = decoder.Decode(&handoff); err != nil {
+	// Unknown fields are tolerated so a rollback to an older updater can still
+	// read a handoff record written by a newer one; schema_version and
+	// Validate() remain the compatibility gate.
+	if err = json.Unmarshal(raw, &handoff); err != nil {
 		return handoff, err
 	}
 	if err = handoff.Validate(); err != nil {

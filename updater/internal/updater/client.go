@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -19,10 +20,44 @@ type Agent struct {
 	Config  Config
 	Client  *http.Client
 	Execute func(context.Context, string, ...string) ([]byte, error)
+
+	degradedMu sync.Mutex
+	degraded   error
 }
 
 func New(c Config) *Agent {
 	return &Agent{Config: c, Client: &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, Execute: command}
+}
+
+// setDegraded marks the executor as unable to safely claim or execute tasks
+// while local state (journal/handoff) is unreadable. Heartbeats keep flowing
+// with every target reported not-ready so the panel explains the outage
+// instead of silently going offline or crash-looping.
+func (a *Agent) setDegraded(err error) {
+	a.degradedMu.Lock()
+	defer a.degradedMu.Unlock()
+	if err == nil {
+		return
+	}
+	if a.degraded == nil || a.degraded.Error() != err.Error() {
+		fmt.Fprintf(os.Stderr, "xboard-updater: degraded: %v\n", err)
+	}
+	a.degraded = err
+}
+
+func (a *Agent) clearDegraded() {
+	a.degradedMu.Lock()
+	defer a.degradedMu.Unlock()
+	a.degraded = nil
+}
+
+func (a *Agent) degradedReason() string {
+	a.degradedMu.Lock()
+	defer a.degradedMu.Unlock()
+	if a.degraded == nil {
+		return ""
+	}
+	return a.degraded.Error()
 }
 
 // executorLockWait bounds how long a starting updater waits for a concurrent
@@ -48,6 +83,19 @@ func isPermanentAPIError(err error) bool {
 	return errors.As(err, &permanent)
 }
 
+// authAPIError marks a 401/403 panel rejection (executor disabled, machine
+// deactivated, or rotated credentials). Retrying every cycle would spam logs
+// without changing the outcome, so callers back off for several minutes.
+type authAPIError struct{ err error }
+
+func (e authAPIError) Error() string { return e.err.Error() }
+func (e authAPIError) Unwrap() error  { return e.err }
+
+func isAuthAPIError(err error) bool {
+	var auth authAPIError
+	return errors.As(err, &auth)
+}
+
 func (a *Agent) api(ctx context.Context, action string, input any, output any) error {
 	token, err := os.ReadFile(a.Config.TokenFile)
 	if err != nil {
@@ -71,6 +119,9 @@ func (a *Agent) api(ctx context.Context, action string, input any, output any) e
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		wrapped := fmt.Errorf("update API %s returned HTTP %d", action, resp.StatusCode)
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			return authAPIError{err: wrapped}
+		}
 		if resp.StatusCode >= 400 && resp.StatusCode < 500 && resp.StatusCode != http.StatusTooManyRequests {
 			return permanentAPIError{err: wrapped}
 		}
@@ -188,8 +239,15 @@ func (a *Agent) flush(ctx context.Context, j *Journal) error {
 	return nil
 }
 func (a *Agent) heartbeat(ctx context.Context) error {
+	degraded := a.degradedReason()
 	rows := []map[string]any{}
 	for _, target := range a.Config.Targets {
+		if degraded != "" {
+			rows = append(rows, map[string]any{"id": target.ID, "name": target.Name, "component": target.Component, "version": nil,
+				"installation_method": target.Method, "ready": false, "reason": degraded,
+				"capabilities": map[string]any{"panel_contract": 1, "database_recovery": target.DatabaseRecovery()}})
+			continue
+		}
 		current, err := a.current(ctx, target)
 		ready := err == nil
 		reason := ""
@@ -212,13 +270,47 @@ func (a *Agent) heartbeat(ctx context.Context) error {
 		"instances":            rows,
 	}, nil)
 }
+
+// heartbeatLoop keeps heartbeats flowing while a task executes. Cycle is
+// synchronous: a long replacement previously stopped heartbeats for the whole
+// task, the panel showed the executor as offline, and creating tasks for other
+// instances on the same host was rejected while an update was running.
+func (a *Agent) heartbeatLoop(ctx context.Context) {
+	interval := 15 * time.Second
+	for {
+		if err := a.heartbeat(ctx); err != nil {
+			fmt.Fprintln(os.Stderr, "xboard-updater: heartbeat:", err)
+			if isAuthAPIError(err) {
+				interval = 5 * time.Minute
+			}
+		} else {
+			interval = 15 * time.Second
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(interval):
+		}
+	}
+}
 func (a *Agent) Cycle(ctx context.Context) error {
 	raw, err := os.ReadFile(a.journalPath())
 	if err == nil {
 		var j Journal
-		if err = json.Unmarshal(raw, &j); err != nil {
-			return errors.New("invalid update journal: manual recovery required")
+		if jerr := json.Unmarshal(raw, &j); jerr != nil {
+			// A corrupt journal must not silently stop heartbeats or crash-loop
+			// the service; degrade visibly until it is repaired or archived via
+			// `xboard-updater recover`.
+			a.setDegraded(errors.New("invalid update journal: manual recovery required (xboard-updater recover)") )
+			return nil
 		}
+		// A readable journal still requires a readable handoff record: an
+		// unfinished Admin handoff owns this host exclusively (serial updates).
+		if _, herr := LoadHandoff(a.Config.HandoffFile()); herr != nil && !os.IsNotExist(herr) {
+			a.setDegraded(fmt.Errorf("invalid updater handoff: manual recovery required: %v", herr))
+			return nil
+		}
+		a.clearDegraded()
 		if j.Task.Status == "succeeded" || j.Task.Status == "failed" || j.Task.Status == "rolled_back" || j.Task.Status == "rollback_failed" {
 			j.Done = true
 		}
@@ -279,7 +371,8 @@ func (a *Agent) Cycle(ctx context.Context) error {
 						j.Done = true
 					}
 				} else if !os.IsNotExist(handoffErr) {
-					return fmt.Errorf("invalid Admin updater handoff: %w", handoffErr)
+					a.setDegraded(fmt.Errorf("invalid Admin updater handoff: %v", handoffErr))
+					return nil
 				} else if err = a.recover(ctx, &j); err != nil {
 					// Never blindly re-execute an interrupted installation.
 					return err
@@ -296,10 +389,13 @@ func (a *Agent) Cycle(ctx context.Context) error {
 			return err
 		}
 	} else if !os.IsNotExist(err) {
-		return err
+		a.setDegraded(fmt.Errorf("update journal unreadable: %v", err))
+		return nil
 	}
-	if err = a.heartbeat(ctx); err != nil {
-		return err
+	// Heartbeats now run in their own loop (see heartbeatLoop) so they keep
+	// flowing while a task executes.
+	if a.degradedReason() != "" {
+		return nil // never claim tasks while local state is unusable
 	}
 	var task *Task
 	if err = a.api(ctx, "claim", map[string]any{}, &task); err != nil {
@@ -313,7 +409,11 @@ func (a *Agent) Cycle(ctx context.Context) error {
 			continue
 		}
 		if task.Reclaimed || task.Status != "preparing" || task.Sequence != 0 {
-			return errors.New("active task has no local journal; restore the executor state directory before continuing")
+			// The panel keeps re-issuing a task whose local journal is gone.
+			// Never blindly re-execute it; degrade (visible on the panel) until
+			// the administrator restores the state directory or aborts the task.
+			a.setDegraded(errors.New("active task has no local journal; restore the executor state directory or abort the task on the panel"))
+			return nil
 		}
 		if err = task.Validate(target); err != nil {
 			return err
@@ -542,7 +642,10 @@ func (a *Agent) Run(ctx context.Context) error {
 	}
 	retired, err := a.retireSupersededHandoff(ctx)
 	if err != nil {
-		return err
+		// Local-state problems must not crash-loop the service (systemd would
+		// restart it into the same failure). Keep running; the next Cycle
+		// re-evaluates the state and degrades visibly while heartbeats continue.
+		fmt.Fprintln(os.Stderr, err)
 	}
 	if retired {
 		return nil
@@ -607,24 +710,43 @@ func (a *Agent) Run(ctx context.Context) error {
 			return errors.New("unfinished updater handoff requires explicit adoption or rollback")
 		}
 	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("invalid updater handoff: %w", err)
+		// A corrupt handoff record used to abort into a systemd restart loop.
+		// Degrade instead; `xboard-updater recover` can archive it after manual
+		// verification, and heartbeats keep explaining the state to the panel.
+		a.setDegraded(fmt.Errorf("invalid updater handoff: manual recovery required: %v", err))
 	}
+	go a.heartbeatLoop(ctx)
+	if err := a.heartbeat(ctx); err != nil { // first beat immediately; the loop repeats
+		fmt.Fprintln(os.Stderr, "xboard-updater: heartbeat:", err)
+	}
+	lastErr := ""
 	for {
 		if a.oneShotHandoffComplete() {
 			return nil
 		}
+		wait := 15 * time.Second
 		if err = a.Cycle(ctx); err != nil {
 			if errors.Is(err, errHandoffTransferred) {
 				// The Compose operation started the target updater. Exiting this
 				// process prevents the old binary from reclaiming the task.
 				return nil
 			}
-			fmt.Fprintln(os.Stderr, err)
+			if err.Error() != lastErr {
+				fmt.Fprintln(os.Stderr, err)
+				lastErr = err.Error()
+			}
+			if isAuthAPIError(err) {
+				// 401/403 rejections (disabled executor, rotated credentials)
+				// cannot succeed by retrying every 15 seconds.
+				wait = 5 * time.Minute
+			}
+		} else {
+			lastErr = ""
 		}
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case <-time.After(15 * time.Second):
+		case <-time.After(wait):
 		}
 	}
 }
