@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useUsageApi } from "@/lib/usage-api";
+import { isUsageDisabledError, UsageDisabledNotice } from "@/components/usage/usage-disabled-notice";
 import {
   Trophy,
   Medal,
@@ -80,6 +81,7 @@ export function LeaderboardExplorer({
   } | null>(null);
   const [remoteKey, setRemoteKey] = useState("");
   const [remoteError, setError] = useState("");
+  const [disabled, setDisabled] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [range, setRange] = useState(() => defaultRange(now));
   const [kind, setKind] = useState<Kind>("users");
@@ -98,7 +100,7 @@ export function LeaderboardExplorer({
   const error = remoteKey === queryKey ? remoteError : "";
   const loading = !usagePreviewEnabled && remoteKey !== queryKey;
   useEffect(() => {
-    if (usagePreviewEnabled) return;
+    if (usagePreviewEnabled || disabled) return;
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       const [from, to] = rangeBounds(range, now);
@@ -124,7 +126,12 @@ export function LeaderboardExplorer({
         })
         .catch((reason: Error) => {
           if (!controller.signal.aborted) {
-            setError(reason.message);
+            if (isUsageDisabledError(reason)) {
+              setDisabled(true);
+              setError("");
+            } else {
+              setError(reason.message);
+            }
             setRemoteKey(queryKey);
             setRemote(null);
           }
@@ -134,7 +141,7 @@ export function LeaderboardExplorer({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [api, range, now, kind, deviceScope, limit, search, queryKey]);
+  }, [api, range, now, kind, deviceScope, limit, search, queryKey, disabled]);
   const data = useMemo(
     () => makeLeaderboardPreview(range, now, deviceScope === "period", admin),
     [range, now, deviceScope, admin],
@@ -189,7 +196,9 @@ export function LeaderboardExplorer({
           刷新榜单
         </Button>
       </div>
-      {(!usagePreviewEnabled && !remoteData) || error ? (
+      {!usagePreviewEnabled && disabled ? (
+        <UsageDisabledNotice />
+      ) : (!usagePreviewEnabled && !remoteData) || error ? (
         <UsageEmpty
           title={error ? "排行榜加载失败" : "正在加载排行榜"}
           description={

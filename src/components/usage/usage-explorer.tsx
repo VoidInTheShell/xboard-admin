@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
+import { isUsageDisabledError, UsageDisabledNotice } from "@/components/usage/usage-disabled-notice";
 import {
   Activity,
   ArrowDown,
@@ -151,6 +152,7 @@ export function UsageExplorer({ selfOnly = false }: { selfOnly?: boolean }) {
   const api = useUsageApi();
   const [revision, setRevision] = useState(0);
   const [loadError, setLoadError] = useState("");
+  const [disabled, setDisabled] = useState(false);
   const [eventTotal, setEventTotal] = useState(0);
   const [remoteEventKey, setRemoteEventKey] = useState("");
   const [remoteEvents, setRemoteEvents] = useState<UsageEvent[]>([]);
@@ -226,6 +228,7 @@ export function UsageExplorer({ selfOnly = false }: { selfOnly?: boolean }) {
       .then((data) => {
         if (controller.signal.aborted) return;
         setLoadError("");
+        setDisabled(!usagePreviewEnabled && data.enabled === false);
         setReviewed(data.reviewed ?? []);
         setDataset(
           data.enabled === false
@@ -245,7 +248,7 @@ export function UsageExplorer({ selfOnly = false }: { selfOnly?: boolean }) {
     return () => controller.abort();
   }, [api, range, userId, serverId, nodeId, revision]);
   useEffect(() => {
-    if (usagePreviewEnabled) return;
+    if (usagePreviewEnabled || disabled) return;
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
       const [from, to] = rangeBounds(range, Date.now());
@@ -275,7 +278,12 @@ export function UsageExplorer({ selfOnly = false }: { selfOnly?: boolean }) {
         })
         .catch((error: Error) => {
           if (!controller.signal.aborted) {
-            setLoadError(error.message);
+            if (isUsageDisabledError(error)) {
+              setDisabled(true);
+              setLoadError("");
+            } else {
+              setLoadError(error.message);
+            }
             setRemoteEvents([]);
             setEventTotal(0);
             setRemoteEventKey(eventQueryKey);
@@ -299,6 +307,7 @@ export function UsageExplorer({ selfOnly = false }: { selfOnly?: boolean }) {
     search,
     page,
     revision,
+    disabled,
   ]);
   function refreshSnapshot() {
     if (!usagePreviewEnabled) {
@@ -630,7 +639,9 @@ export function UsageExplorer({ selfOnly = false }: { selfOnly?: boolean }) {
           </Button>
         </div>
       </div>
-      {!enabled || loadError ? (
+      {!usagePreviewEnabled && disabled ? (
+        <UsageDisabledNotice />
+      ) : !enabled || loadError ? (
         <Card>
           <CardContent>
             <UsageEmpty

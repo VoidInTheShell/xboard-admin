@@ -7,10 +7,13 @@ import {
   CalendarClock,
   Gauge,
   Save,
+  Scale,
   Users,
 } from "lucide-react";
 import { toast } from "sonner";
+import { formatTrafficBytes } from "@/lib/traffic-format";
 import { onlineHistorySeries } from "@/lib/usage-online-history";
+import { UsageDisabledNotice } from "@/components/usage/usage-disabled-notice";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -66,6 +69,14 @@ export type TrafficPolicy = {
   zone: string;
   direction: string;
   warning: string;
+};
+
+export type TrafficCalibration = { used_bytes: string; at: number };
+
+type PolicyResponse = {
+  policy: TrafficPolicy & { calibration?: unknown };
+  used: string;
+  calibration?: TrafficCalibration | null;
 };
 export function defaultTrafficPolicy(id: number): TrafficPolicy {
   return {
@@ -168,6 +179,10 @@ export function ServerUsageSheet({
   const [tab, setTab] = useState(initialTab);
   const [draft, setDraft] = useState(policy);
   const [range, setRange] = useState(defaultRange);
+  const [calibration, setCalibration] = useState<TrafficCalibration | null>(null);
+  const [calibrationValue, setCalibrationValue] = useState("");
+  const [calibrationUnit, setCalibrationUnit] = useState<"GiB" | "TiB">("GiB");
+  const [clearCalibration, setClearCalibration] = useState(false);
   const previewData = useMemo(
     () => (usagePreviewEnabled ? makeUsagePreview() : null),
     [],
@@ -187,7 +202,7 @@ export function ServerUsageSheet({
         },
         controller.signal,
       ),
-      api.get<{ policy: TrafficPolicy; used: string }>(
+      api.get<PolicyResponse>(
         "usage/policy",
         { machine_id: machine.id },
         controller.signal,
@@ -196,14 +211,20 @@ export function ServerUsageSheet({
       .then(([snapshot, response]) => {
         if (controller.signal.aborted) return;
         setRemote(snapshot);
-        setPolicy(response.policy);
+        const policyFields = { ...response.policy };
+        delete policyFields.calibration;
+        setPolicy(policyFields);
         setDraft({
-          ...response.policy,
-          limit: String(response.policy.limit),
-          resetDay: String(response.policy.resetDay),
-          warning: String(response.policy.warning),
+          ...policyFields,
+          limit: String(policyFields.limit),
+          resetDay: String(policyFields.resetDay),
+          warning: String(policyFields.warning),
         });
         setRemoteUsed(Number(response.used) / 1073741824);
+        setCalibration(response.calibration ?? null);
+        setCalibrationUnit(policyFields.unit);
+        setCalibrationValue("");
+        setClearCalibration(false);
         setError("");
       })
       .catch((reason: Error) => {
@@ -235,7 +256,11 @@ export function ServerUsageSheet({
     Number.isFinite(Number(draft.warning)) &&
     Number(draft.warning) >= 1 &&
     Number(draft.warning) <= 100;
-  const valid = validLimit && validDay && validWarning;
+  const calibrationNumber = Number(calibrationValue);
+  const validCalibration =
+    calibrationValue.trim() === "" ||
+    (Number.isFinite(calibrationNumber) && calibrationNumber > 0);
+  const valid = validLimit && validDay && validWarning && validCalibration;
   const cycle = billingCycle(policy, now);
   const draftCycle = valid ? billingCycle(draft, now) : null;
   const used = usagePreviewEnabled
@@ -262,6 +287,7 @@ export function ServerUsageSheet({
   function field(key: keyof TrafficPolicy, value: string) {
     setDraft((previous) => ({ ...previous, [key]: value }));
   }
+  const disabled = !usagePreviewEnabled && data?.enabled === false;
   return (
     <Sheet
       open
@@ -281,25 +307,23 @@ export function ServerUsageSheet({
           </SheetDescription>
         </SheetHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 sm:p-6">
-          {!data || data.enabled === false || error ? (
+          {error ? (
             <UsageEmpty
-              title={
-                error
-                  ? "服务器历史加载失败"
-                  : !data
-                    ? "正在加载服务器历史"
-                    : "服务器历史尚未启用"
-              }
-              description={
-                error ||
-                (!data
-                  ? "正在从后端获取流量与在线历史。"
-                  : "启用采集后，可查看服务器的流量与在线历史。")
-              }
+              title="服务器历史加载失败"
+              description={error}
             />
-          ) : (
+          ) : !data ? (
+            <UsageEmpty
+              title="正在加载服务器历史"
+              description="正在从后端获取流量与在线历史。"
+            />
+          ) : disabled ? (
+            <UsageDisabledNotice compact />
+          ) : null}
+          {disabled || (!error && data) ? (
             <>
-              <div className="grid gap-3 sm:grid-cols-3">
+              {!disabled && (
+                <div className="grid gap-3 sm:grid-cols-3">
                 <UsageMetric
                   label="在线用户 / 设备"
                   value={counts.users + " / " + counts.devices}
@@ -320,8 +344,10 @@ export function ServerUsageSheet({
                   hint={"每月 " + policy.resetDay + " 日 · " + policy.zone}
                   icon={<CalendarClock />}
                 />
-              </div>
-              <Tabs value={tab} onValueChange={setTab} className="min-w-0">
+                </div>
+              )}
+              <Tabs value={disabled ? "traffic" : tab} onValueChange={setTab} className="min-w-0">
+                {!disabled && (
                 <TabsList
                   variant="line"
                   className="group-data-[orientation=horizontal]/tabs:h-auto"
@@ -335,6 +361,8 @@ export function ServerUsageSheet({
                     流量管理
                   </TabsTrigger>
                 </TabsList>
+                )}
+                {!disabled && (
                 <TabsContent
                   value="history"
                   className="mt-4 flex flex-col gap-4"
@@ -404,6 +432,7 @@ export function ServerUsageSheet({
                     </Link>
                   </Button>
                 </TabsContent>
+                )}
                 <TabsContent
                   value="traffic"
                   className="mt-4 flex flex-col gap-5"
@@ -535,6 +564,72 @@ export function ServerUsageSheet({
                             </FieldDescription>
                           )}
                         </Field>
+                        <Field data-invalid={!validCalibration}>
+                          <FieldLabel htmlFor="server-calibration">
+                            流量校准（本账期已用）
+                          </FieldLabel>
+                          {calibration && !clearCalibration ? (
+                            <div className="flex flex-wrap items-center gap-2 text-sm">
+                              <Badge variant="secondary">
+                                <Scale aria-hidden="true" />
+                                已校准 {formatTrafficBytes(Number(calibration.used_bytes))} · {formatTime(calibration.at * 1000)}
+                              </Badge>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setClearCalibration(true)}
+                              >
+                                清除校准
+                              </Button>
+                            </div>
+                          ) : clearCalibration ? (
+                            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                              保存后将清除校准，改用面板自身统计。
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setClearCalibration(false)}
+                              >
+                                撤销
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="flex gap-2">
+                              <Input
+                                id="server-calibration"
+                                type="number"
+                                min="0"
+                                step="any"
+                                placeholder="留空则不校准"
+                                value={calibrationValue}
+                                onChange={(e) => {
+                                  setCalibrationValue(e.target.value);
+                                  setClearCalibration(false);
+                                }}
+                                aria-invalid={!validCalibration}
+                              />
+                              <UsageSelect
+                                label="校准单位"
+                                value={calibrationUnit}
+                                onChange={(value) => setCalibrationUnit(value as "GiB" | "TiB")}
+                                options={[
+                                  { value: "GiB", label: "GiB" },
+                                  { value: "TiB", label: "TiB" },
+                                ]}
+                              />
+                            </div>
+                          )}
+                          <FieldDescription>
+                            填入供应商管理面板显示的本账期已用流量，保存后本账期用量从该值重新起算，后续流量在其基础上继续累计；留空保持面板自身统计。修改重置日期会使已保存的校准失效。
+                          </FieldDescription>
+                          {!validCalibration && (
+                            <FieldDescription role="alert">
+                              校准值须为大于 0 的数字。
+                            </FieldDescription>
+                          )}
+                        </Field>
                       </FieldGroup>
                     </CardContent>
                   </Card>
@@ -555,7 +650,10 @@ export function ServerUsageSheet({
                       variant="outline"
                       onClick={() => {
                         setDraft(policy);
-                        setTab("history");
+                        setCalibrationValue("");
+                        setClearCalibration(false);
+                        setCalibrationUnit(policy.unit);
+                        if (!disabled) setTab("history");
                       }}
                     >
                       取消
@@ -566,24 +664,33 @@ export function ServerUsageSheet({
                         setSaving(true);
                         try {
                           if (!usagePreviewEnabled) {
+                            const calibrationPayload = clearCalibration
+                              ? { clear: true }
+                              : calibrationValue.trim() !== ""
+                                ? { value: Number(calibrationValue), unit: calibrationUnit }
+                                : undefined;
                             await api.post("usage/policy/save", {
                               machine_id: machine.id,
                               ...draft,
+                              ...(calibrationPayload ? { calibration: calibrationPayload } : {}),
                             });
-                            const updated = await api.get<{ used: string }>(
+                            const updated = await api.get<PolicyResponse>(
                               "usage/policy",
                               { machine_id: machine.id },
                             );
                             setRemoteUsed(Number(updated.used) / 1073741824);
+                            setCalibration(updated.calibration ?? null);
                           }
                           setPolicy(draft);
+                          setCalibrationValue("");
+                          setClearCalibration(false);
                           onSave(draft);
                           toast.success(
                             usagePreviewEnabled
                               ? "已保存到本次前端预览"
                               : "流量规则已保存",
                           );
-                          setTab("history");
+                          if (!disabled) setTab("history");
                         } catch (reason) {
                           toast.error(
                             reason instanceof Error
@@ -601,12 +708,14 @@ export function ServerUsageSheet({
                   </div>
                 </TabsContent>
               </Tabs>
+              {!disabled && (
               <p className="flex items-center gap-1 text-xs text-muted-foreground">
                 <Activity className="size-3" />
                 采样时间：{formatTime(now)}
               </p>
+              )}
             </>
-          )}
+          ) : null}
         </div>
       </SheetContent>
     </Sheet>
