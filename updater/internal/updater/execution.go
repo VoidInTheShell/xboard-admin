@@ -257,8 +257,8 @@ func (a *Agent) cleanupPreviousUpdater(ctx context.Context, t Target, handoff Ha
 	if !previousGone {
 		return errors.New("previous updater container did not stop")
 	}
-	if _, err := a.compose(ctx, t, nil, "create", "--no-deps", "--no-build", "--pull", "never", a.updaterService()); err != nil {
-		return fmt.Errorf("create promoted updater service: %w", err)
+	if _, err := a.compose(ctx, t, nil, "up", "--detach", "--no-deps", "--no-build", "--pull", "never", a.updaterService()); err != nil {
+		return fmt.Errorf("promote updater service: %w", err)
 	}
 	status, err := a.exec(ctx, "docker", "inspect", "--format", "{{.State.Status}}", previous)
 	if err != nil {

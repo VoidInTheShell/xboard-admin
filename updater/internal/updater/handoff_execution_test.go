@@ -25,6 +25,7 @@ type adminHandoffHarness struct {
 	stateDir     string
 	handoffName  string
 	oldRemoved   bool
+	promoted     bool
 }
 
 func newAdminHandoffHarness(t *testing.T) *adminHandoffHarness {
@@ -71,6 +72,9 @@ func newAdminHandoffHarness(t *testing.T) *adminHandoffHarness {
 		case strings.Contains(line, "ps --all --format json") && strings.Contains(line, "xboard-updater"):
 			return []byte(`{"ID":"target-updater","Name":"` + h.handoffName + `","Image":"` + h.task.Manifest.Artifacts.UpdaterImage + `","State":"running"}`), nil
 		case strings.Contains(line, "docker inspect --format {{.State.Status}} xboard-updater"):
+			if h.promoted {
+				return []byte("running"), nil
+			}
 			if h.oldRemoved {
 				return []byte("created"), nil
 			}
@@ -78,7 +82,8 @@ func newAdminHandoffHarness(t *testing.T) *adminHandoffHarness {
 		case strings.Contains(line, "docker rm xboard-updater"):
 			h.oldRemoved = true
 			return nil, nil
-		case strings.Contains(line, "create --no-deps") && strings.Contains(line, "xboard-updater"):
+		case strings.Contains(line, "up --detach --no-deps") && strings.Contains(line, "xboard-updater"):
+			h.promoted = true
 			return nil, nil
 		case strings.Contains(line, "docker start xboard-updater"):
 			return nil, nil
