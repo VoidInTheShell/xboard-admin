@@ -1,6 +1,7 @@
 import { formatTrafficBytes } from "@/lib/traffic-format";
 import * as React from "react"
-import { Activity, CircleAlert, CircleDollarSign, RefreshCw, Users } from "lucide-react"
+import { useSiteBranding } from "@/lib/site-branding"
+import { Activity, ArrowLeftRight, CircleAlert, CircleDollarSign, RefreshCw, Users } from "lucide-react"
 import { Link } from "react-router-dom"
 import { ResourceError, ResourceTableLoading } from "@/components/control-plane/resource-states"
 import { PageHeader } from "@/components/layout/page-header"
@@ -46,6 +47,7 @@ type AuditPage = { data?: AuditEntry[]; total?: number }
 
 export function DashboardPage() {
   const api = useAdminApi()
+  const { selfUseMode } = useSiteBranding()
   const query = React.useCallback(async (signal: AbortSignal) => {
     const [statsResponse, audit] = await Promise.all([
       api.get<{ data: Stats }>("stat/getStats", undefined, signal),
@@ -56,7 +58,12 @@ export function DashboardPage() {
   const dashboard = useAdminQuery(query)
   const stats = dashboard.data?.stats
 
-  const metrics = [
+  const metrics = selfUseMode ? [
+    { label: "实时在线", value: stats ? String(stats.onlineUsers) : "—", hint: stats ? `${stats.onlineDevices} 台设备 · ${stats.onlineNodes} 个在线节点` : "正在同步", icon: Activity, tone: "success" as const },
+    { label: "用户", value: stats ? String(stats.totalUsers) : "—", hint: stats ? `${stats.activeUsers} 个有效订阅 · 本月 +${stats.currentMonthNewUsers}` : "正在同步", icon: Users, tone: "neutral" as const },
+    { label: "今日流量", value: formatBytes(stats?.todayTraffic.total), hint: formatTrafficSplit(stats?.todayTraffic), icon: ArrowLeftRight, tone: "info" as const },
+    { label: "待处理工单", value: stats ? String(stats.ticketPendingTotal) : "—", hint: "自用模式已隐藏收入与佣金统计", icon: CircleAlert, tone: "warning" as const },
+  ] : [
     { label: "今日收入", value: formatMoney(stats?.todayIncome), hint: formatGrowth(stats?.dayIncomeGrowth), icon: CircleDollarSign, tone: "success" as const },
     { label: "用户", value: stats ? String(stats.totalUsers) : "—", hint: stats ? `${stats.activeUsers} 个有效订阅 · 本月 +${stats.currentMonthNewUsers}` : "正在同步", icon: Users, tone: "neutral" as const },
     { label: "实时在线", value: stats ? String(stats.onlineUsers) : "—", hint: stats ? `${stats.onlineDevices} 台设备 · ${stats.onlineNodes} 个在线节点` : "正在同步", icon: Activity, tone: "info" as const },
@@ -73,12 +80,23 @@ export function DashboardPage() {
 
       <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]">
         <Card className="gap-0 py-0 shadow-none">
-          <CardHeader className="border-b px-4 py-4"><CardTitle className="text-base">业务与流量</CardTitle><CardDescription>收入使用后端原始主单位，流量统一换算为易读格式</CardDescription></CardHeader>
+          <CardHeader className="border-b px-4 py-4"><CardTitle className="text-base">{selfUseMode ? "流量概览" : "业务与流量"}</CardTitle><CardDescription>{selfUseMode ? "自用模式下隐藏收入与佣金，仅保留流量与在线信息" : "收入使用后端原始主单位，流量统一换算为易读格式"}</CardDescription></CardHeader>
           <CardContent className="grid gap-0 p-0 sm:grid-cols-2">
-            <Summary label="本月收入" value={formatMoney(stats?.currentMonthIncome)} hint={formatGrowth(stats?.monthIncomeGrowth)} />
-            <Summary label="本月佣金发放" value={formatMoney(stats?.currentMonthCommissionPayout)} hint={`${stats?.commissionPendingTotal ?? 0} 笔待确认`} />
-            <Summary label="今日流量" value={formatBytes(stats?.todayTraffic.total)} hint={formatTrafficSplit(stats?.todayTraffic)} />
-            <Summary label="本月流量" value={formatBytes(stats?.monthTraffic.total)} hint={formatTrafficSplit(stats?.monthTraffic)} />
+            {selfUseMode ? (
+              <>
+                <Summary label="今日流量" value={formatBytes(stats?.todayTraffic.total)} hint={formatTrafficSplit(stats?.todayTraffic)} />
+                <Summary label="本月流量" value={formatBytes(stats?.monthTraffic.total)} hint={formatTrafficSplit(stats?.monthTraffic)} />
+                <Summary label="累计流量" value={formatBytes(stats?.totalTraffic.total)} hint={formatTrafficSplit(stats?.totalTraffic)} />
+                <Summary label="在线规模" value={stats ? `${stats.onlineDevices} 台设备` : "—"} hint={stats ? `${stats.onlineNodes} 个在线节点 · ${stats.onlineUsers} 位在线用户` : "正在同步"} />
+              </>
+            ) : (
+              <>
+                <Summary label="本月收入" value={formatMoney(stats?.currentMonthIncome)} hint={formatGrowth(stats?.monthIncomeGrowth)} />
+                <Summary label="本月佣金发放" value={formatMoney(stats?.currentMonthCommissionPayout)} hint={`${stats?.commissionPendingTotal ?? 0} 笔待确认`} />
+                <Summary label="今日流量" value={formatBytes(stats?.todayTraffic.total)} hint={formatTrafficSplit(stats?.todayTraffic)} />
+                <Summary label="本月流量" value={formatBytes(stats?.monthTraffic.total)} hint={formatTrafficSplit(stats?.monthTraffic)} />
+              </>
+            )}
           </CardContent>
         </Card>
 
