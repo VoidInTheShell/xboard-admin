@@ -142,6 +142,40 @@ code,
   font-variant-numeric: tabular-nums;
 }
 
+/* 登录页瀑布毛玻璃：自上而下的柔和高光带，仅作装饰，随系统减少动态效果自动停用 */
+@keyframes login-waterfall {
+  0% {
+    transform: translateY(-110%) rotate(8deg);
+  }
+
+  100% {
+    transform: translateY(340%) rotate(8deg);
+  }
+}
+
+.login-waterfall-sheen {
+  background: linear-gradient(180deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.05) 30%,
+      rgba(255, 255, 255, 0.13) 50%,
+      rgba(255, 255, 255, 0.05) 70%,
+      transparent 100%);
+  animation: login-waterfall 7.5s linear infinite;
+}
+
+.login-waterfall-sheen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.04) 40%,
+      rgba(255, 255, 255, 0.08) 55%,
+      transparent 100%);
+  animation: login-waterfall 7.5s linear infinite;
+  animation-delay: -3.2s;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

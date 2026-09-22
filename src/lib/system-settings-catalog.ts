@@ -191,13 +191,16 @@ export const systemSettingsCatalog: CatalogTab[] = [
     }, {
       id: "admin",
       title: "管理后台",
-      description: "XAdmin 使用通用站点品牌；菜单调整仅影响管理后台。",
+      description: "XAdmin 菜单与登录页个性化；登录页背景、毛玻璃和遮罩效果仅影响 XAdmin 登录页。",
       fields: [
         setting("frontend", "admin_hidden_menus", { label: "隐藏菜单", control: "multiselect", options: [
           { value: "/usage", label: "使用记录" }, { value: "/leaderboard", label: "排行榜" },
           { value: "/commissions", label: "邀请与佣金" }, { value: "/knowledge", label: "知识库" },
           { value: "/extensions", label: "主题与插件" },
         ], description: "仅隐藏导航入口，不改变管理员权限。系统配置入口始终保留。", span: 2 }),
+        setting("frontend", "admin_login_background", { label: "登录页背景图片", control: "text", placeholder: "https://example.com/background.jpg", span: 2, description: "登录页整页背景图，建议横向大图。留空使用默认深色背景。" }),
+        setting("frontend", "admin_login_glass_opacity", { label: "登录框毛玻璃不透明度", control: "slider", valueType: "number", defaultValue: 60, min: 0, max: 95, step: 1, description: "登录卡片的底色浓度：值越低背景越通透，越高文字越清晰。" }),
+        setting("frontend", "admin_login_mask_opacity", { label: "登录页背景遮罩透明度", control: "slider", valueType: "number", defaultValue: 40, min: 0, max: 90, step: 1, description: "背景图上叠加的暗色遮罩浓度：越高背景图越暗、登录内容越突出。仅在使用自定义背景图时生效。" }),
       ],
     }, {
       id: "original",

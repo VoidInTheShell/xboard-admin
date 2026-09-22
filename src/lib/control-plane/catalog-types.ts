@@ -8,6 +8,7 @@ export type CatalogControl =
   | "switch"
   | "tags"
   | "multiselect"
+  | "slider"
 
 export type CatalogCodeLanguage = "json" | "yaml" | "text"
 
@@ -35,6 +36,9 @@ export type CatalogField = {
   showWhen?: CatalogCondition | CatalogCondition[]
   span?: 1 | 2
   rows?: number
+  min?: number
+  max?: number
+  step?: number
   sensitive?: boolean
   required?: boolean
   valueType?: "string" | "number" | "boolean" | "string-array"

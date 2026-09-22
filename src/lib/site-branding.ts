@@ -7,19 +7,29 @@ type SiteBranding = {
   description: string
   loginTitle: string
   loginDescription: string
+  adminLoginBackground: string
+  adminLoginGlassOpacity: number
+  adminLoginMaskOpacity: number
+  selfUseMode: boolean
   hiddenMenus: string[]
 }
-const defaults: SiteBranding = { appName: 'XBoard Admin', logo: '', description: '', loginTitle: '', loginDescription: '', hiddenMenus: [] }
+const defaults: SiteBranding = { appName: 'XBoard Admin', logo: '', description: '', loginTitle: '', loginDescription: '', adminLoginBackground: '', adminLoginGlassOpacity: 60, adminLoginMaskOpacity: 40, selfUseMode: false, hiddenMenus: [] }
 let current = defaults
 let started = false
 const listeners = new Set<() => void>()
 function text(value: unknown, fallback = '') { return typeof value === 'string' ? value : fallback }
+function flag(value: unknown) { return value === true || value === 1 || value === '1' }
+function integer(value: unknown, fallback: number, min: number, max: number) {
+  const parsed = typeof value === 'number' ? value : Number.parseInt(String(value ?? ''), 10)
+  if (!Number.isFinite(parsed)) return fallback
+  return Math.min(max, Math.max(min, Math.round(parsed)))
+}
 function imageUrl(value: unknown) {
-  if (typeof value !== 'string' || !value.trim()) return defaults.logo
+  if (typeof value !== 'string' || !value.trim()) return ''
   try {
     const url = new URL(value, window.location.origin)
-    return ['http:', 'https:'].includes(url.protocol) ? url.href : defaults.logo
-  } catch { return defaults.logo }
+    return ['http:', 'https:'].includes(url.protocol) ? url.href : ''
+  } catch { return '' }
 }
 export async function refreshSiteBranding() {
   try {
@@ -30,6 +40,10 @@ export async function refreshSiteBranding() {
       description: text(data.app_description),
       loginTitle: text(data.user_login_title),
       loginDescription: text(data.user_login_description),
+      adminLoginBackground: imageUrl(data.admin_login_background),
+      adminLoginGlassOpacity: integer(data.admin_login_glass_opacity, 60, 0, 95),
+      adminLoginMaskOpacity: integer(data.admin_login_mask_opacity, 40, 0, 90),
+      selfUseMode: flag(data.self_use_mode),
       hiddenMenus: Array.isArray(data.admin_hidden_menus) ? data.admin_hidden_menus.filter((item): item is string => typeof item === 'string') : [],
     }
     document.title = current.appName
@@ -45,6 +59,6 @@ export async function refreshSiteBranding() {
 function subscribe(listener: () => void) {
   listeners.add(listener)
   if (!started) { started = true; void refreshSiteBranding() }
-  return () => { listeners.delete(listener) }
+  return () => listeners.delete(listener)
 }
 export function useSiteBranding() { return useSyncExternalStore(subscribe, () => current, () => defaults) }

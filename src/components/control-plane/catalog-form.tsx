@@ -38,6 +38,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import { Slider } from '@/components/ui/slider'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
@@ -65,6 +66,7 @@ function initialValues(tabs: CatalogTab[]): CatalogValues {
 function defaultFor(field: CatalogField): CatalogValue {
   if (field.control === 'switch') return false
   if (field.control === 'multiselect') return []
+  if (field.control === 'slider') return field.defaultValue ?? field.min ?? 0
   return ''
 }
 
@@ -414,6 +416,53 @@ function CatalogFieldControl({
       {content}
       <FieldError id={errorId} errors={errors?.map(message => ({ message }))} />
     </div>
+  }
+
+  if (field.control === 'slider') {
+    const min = field.min ?? 0
+    const max = field.max ?? 100
+    const step = field.step ?? 1
+    const numeric = Number(value)
+    const current = Number.isFinite(numeric) ? Math.min(max, Math.max(min, numeric)) : min
+    return (
+      <Field
+        data-config-field={field.key}
+        tabIndex={-1}
+        className={cn('gap-3', wrapperClass)}
+        data-invalid={invalid}
+        data-disabled={disabled}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <FieldLabel htmlFor={inputId}>
+            {field.label}
+            {field.required ? (
+              <span aria-hidden="true" className="text-destructive">
+                *
+              </span>
+            ) : null}
+          </FieldLabel>
+          <span className="font-data text-sm text-muted-foreground" aria-live="polite">{current}%</span>
+        </div>
+        <Slider
+          id={inputId}
+          value={[current]}
+          min={min}
+          max={max}
+          step={step}
+          disabled={disabled}
+          aria-invalid={invalid}
+          aria-describedby={describedBy}
+          onValueChange={([next]) => update(field.key, next)}
+        />
+        {field.description ? (
+          <FieldDescription>{field.description}</FieldDescription>
+        ) : null}
+        <FieldError
+          id={errorId}
+          errors={errors?.map((message) => ({ message }))}
+        />
+      </Field>
+    )
   }
 
   if (field.control === 'switch') {

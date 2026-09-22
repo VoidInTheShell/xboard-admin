@@ -81,6 +81,10 @@ function normalizeFieldValue(field: CatalogField, sourceValue: unknown): Catalog
   if (sourceValue === null || sourceValue === undefined) return field.defaultValue ?? defaultFor(field)
 
   if (field.control === "switch" || field.valueType === "boolean") return toBoolean(sourceValue)
+  if (field.control === "slider") {
+    const numeric = Number(sourceValue)
+    return Number.isFinite(numeric) ? numeric : field.defaultValue ?? field.min ?? 0
+  }
   if (field.valueType === "string-array") {
     return Array.isArray(sourceValue) ? sourceValue.map(String).join(", ") : String(sourceValue)
   }
@@ -96,6 +100,10 @@ function normalizeFieldValue(field: CatalogField, sourceValue: unknown): Catalog
 
 function serializeFieldValue(field: CatalogField, value: CatalogValue | undefined): unknown {
   if (field.valueType === "string-array") return splitList(value)
+  if (field.control === "slider") {
+    const numeric = Number(value)
+    return Number.isFinite(numeric) ? numeric : field.min ?? 0
+  }
   if (field.valueType === "number" || field.control === "number") {
     if (value === "" || value === undefined) return null
     return Number(value)

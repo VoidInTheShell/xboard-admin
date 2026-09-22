@@ -6,22 +6,13 @@ import { useAuth } from "@/lib/auth"
 import { ApiError } from "@/lib/api"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 
 type LoginLocationState = { from?: { pathname?: string } }
 
-function prefersReducedMotion() {
-  return (
-    typeof window !== "undefined" &&
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches
-  )
-}
-
 export function LoginPage() {
   const brand = useSiteBranding()
-  const welcomeMessage = `欢迎使用 ${brand.appName} 管理后台`
   const { login, session } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
@@ -29,42 +20,6 @@ export function LoginPage() {
   const [password, setPassword] = React.useState("")
   const [error, setError] = React.useState("")
   const [submitting, setSubmitting] = React.useState(false)
-  const [welcomeText, setWelcomeText] = React.useState(() =>
-    prefersReducedMotion() ? welcomeMessage : "",
-  )
-  const [typingWelcome, setTypingWelcome] = React.useState(
-    () => !prefersReducedMotion(),
-  )
-
-  React.useEffect(() => {
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)")
-    if (reducedMotion.matches) return
-
-    let characterIndex = 0
-    let timer: number | undefined
-    const showNextCharacter = () => {
-      characterIndex += 1
-      setWelcomeText(welcomeMessage.slice(0, characterIndex))
-      if (characterIndex >= welcomeMessage.length) {
-        setTypingWelcome(false)
-        return
-      }
-      timer = window.setTimeout(showNextCharacter, 75)
-    }
-    const showCompleteMessage = (event: MediaQueryListEvent) => {
-      if (!event.matches) return
-      if (timer) window.clearTimeout(timer)
-      setWelcomeText(welcomeMessage)
-      setTypingWelcome(false)
-    }
-
-    timer = window.setTimeout(showNextCharacter, 75)
-    reducedMotion.addEventListener("change", showCompleteMessage)
-    return () => {
-      if (timer) window.clearTimeout(timer)
-      reducedMotion.removeEventListener("change", showCompleteMessage)
-    }
-  }, [welcomeMessage])
 
   if (session) return <Navigate to="/dashboard" replace />
 
@@ -84,43 +39,60 @@ export function LoginPage() {
     }
   }
 
+  const glassAlpha = brand.adminLoginGlassOpacity
+  const maskAlpha = brand.adminLoginMaskOpacity / 100
+
   return (
-    <main className="grid min-h-dvh bg-background lg:grid-cols-[minmax(0,0.9fr)_minmax(440px,0.7fr)]">
-      <section className="flex min-h-[240px] flex-col border-b bg-muted/30 p-5 sm:min-h-[320px] sm:p-6 lg:min-h-dvh lg:border-r lg:border-b-0 lg:p-10">
-        <div className="flex items-center gap-3">
-          <span className="flex size-10 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-            {brand.logo ? <img src={brand.logo} alt="" className="size-full rounded-xl bg-background object-contain" /> : <Network aria-hidden="true" />}
-          </span>
-          <div>
-            <div className="font-semibold">{brand.appName}</div>
-            <div className="text-xs text-muted-foreground">{brand.description || "管理后台"}</div>
-          </div>
-        </div>
+    <main className="relative min-h-dvh overflow-hidden bg-[#0b0e14]">
+      {/* 背景层：自定义背景图（可调暗色遮罩）或默认深色底 */}
+      <div aria-hidden="true" className="absolute inset-0">
+        {brand.adminLoginBackground ? (
+          <>
+            <img
+              src={brand.adminLoginBackground}
+              alt=""
+              className="size-full object-cover"
+              onError={(event) => { event.currentTarget.style.display = "none" }}
+            />
+            <div className="absolute inset-0 bg-black" style={{ opacity: maskAlpha }} />
+          </>
+        ) : (
+          <div className="size-full bg-[radial-gradient(120%_90%_at_15%_10%,#2a303c_0%,#171b24_45%,#0b0e14_100%)] dark:bg-[radial-gradient(120%_90%_at_15%_10%,#313846_0%,#1a1f2a_45%,#10131b_100%)]" />
+        )}
+        {!brand.adminLoginBackground ? (
+          <div className="absolute inset-0 bg-[radial-gradient(60%_45%_at_78%_18%,rgba(148,163,184,0.16)_0%,transparent_70%),radial-gradient(45%_40%_at_12%_85%,rgba(100,116,139,0.14)_0%,transparent_75%)]" />
+        ) : null}
+      </div>
 
-        <div className="flex flex-1 items-center py-6 sm:py-10">
-          <h1
-            aria-label={welcomeMessage}
-            className="max-w-lg text-2xl font-semibold tracking-tight sm:text-[28px]"
-          >
-            <span aria-hidden="true">{prefersReducedMotion() ? welcomeMessage : welcomeText}</span>
-            {typingWelcome ? (
-              <span
-                aria-hidden="true"
-                className="ml-1 inline-block h-[0.9em] w-px animate-pulse bg-current align-[-0.08em] motion-reduce:hidden"
-              />
-            ) : null}
-          </h1>
-        </div>
-      </section>
+      <div className="relative z-20 flex min-h-dvh items-center justify-center px-4 py-8 sm:px-6 lg:p-0">
+        {/* 登录面板：移动端居中卡片；桌面端为左侧悬浮全高瀑布毛玻璃面板（左侧留 10% 空隙，覆盖至页面顶端） */}
+        <section
+          className="relative w-full max-w-[26.5rem] overflow-hidden rounded-3xl border border-white/25 shadow-[0_24px_70px_-20px_rgba(2,6,17,0.65)] backdrop-blur-2xl dark:border-white/12 lg:absolute lg:inset-y-0 lg:left-[10%] lg:z-10 lg:my-0 lg:w-[30rem] lg:max-w-none lg:rounded-none"
+          style={{ backgroundColor: `color-mix(in srgb, var(--card) ${glassAlpha}%, transparent)` }}
+          aria-label="管理员登录"
+        >
+          <div
+            aria-hidden="true"
+            className="login-waterfall-sheen pointer-events-none absolute inset-x-[-40%] top-0 h-1/3"
+          />
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 rounded-3xl border-t border-white/35 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.22)] lg:rounded-none"
+          />
 
-      <section className="flex items-center justify-center p-4 sm:p-8 lg:p-10">
-        <Card className="w-full max-w-md shadow-none">
-          <form onSubmit={submit}>
-            <CardHeader>
-              <CardTitle>管理员登录</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <FieldGroup>
+          <div className="relative flex h-full flex-col justify-center px-6 py-6 sm:px-8 sm:py-8 lg:px-11 lg:pb-[10vh] lg:pt-0">
+            {/* 站点品牌：居中于登录表单上方（桌面端整体居中偏上，底部留 10% 间隙） */}
+            <header className="flex items-center justify-center gap-3 pb-6 lg:pb-8">
+              <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-white/25 bg-primary/90 text-primary-foreground shadow-sm">
+                {brand.logo ? <img src={brand.logo} alt="" className="size-full rounded-2xl object-contain p-1" /> : <Network aria-hidden="true" />}
+              </span>
+              <div className="min-w-0 rounded-2xl bg-black/40 px-3 py-1.5 backdrop-blur-md">
+                <div className="truncate text-sm font-semibold text-white">{brand.appName}</div>
+                <div className="truncate text-xs text-white/70">{brand.description || "管理后台"}</div>
+              </div>
+            </header>
+
+            <form onSubmit={submit} className="flex w-full flex-col gap-5 lg:mx-auto lg:max-w-sm">
                 {error ? (
                   <Alert variant="destructive">
                     <AlertCircle aria-hidden="true" />
@@ -128,41 +100,40 @@ export function LoginPage() {
                     <AlertDescription>{error}</AlertDescription>
                   </Alert>
                 ) : null}
-                <Field>
-                  <FieldLabel htmlFor="admin-email">管理员邮箱</FieldLabel>
-                  <Input
-                    id="admin-email"
-                    type="email"
-                    autoComplete="username"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                    aria-invalid={Boolean(error) || undefined}
-                    required
-                  />
-                </Field>
-                <Field data-invalid={Boolean(error) || undefined}>
-                  <FieldLabel htmlFor="admin-password">密码</FieldLabel>
-                  <Input
-                    id="admin-password"
-                    type="password"
-                    autoComplete="current-password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    aria-invalid={Boolean(error) || undefined}
-                    required
-                  />
-                </Field>
-              </FieldGroup>
-            </CardContent>
-            <CardFooter className="mt-6 flex-col items-stretch">
-              <Button type="submit" disabled={submitting || !email.trim() || !password}>
-                {submitting ? "正在验证…" : "登录管理后台"}
-                {!submitting ? <ArrowRight data-icon="inline-end" aria-hidden="true" /> : null}
-              </Button>
-            </CardFooter>
-          </form>
-        </Card>
-      </section>
+                <FieldGroup>
+                  <Field>
+                    <FieldLabel htmlFor="admin-email">管理员邮箱</FieldLabel>
+                    <Input
+                      id="admin-email"
+                      type="email"
+                      autoComplete="username"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      aria-invalid={Boolean(error) || undefined}
+                      required
+                    />
+                  </Field>
+                  <Field data-invalid={Boolean(error) || undefined}>
+                    <FieldLabel htmlFor="admin-password">密码</FieldLabel>
+                    <Input
+                      id="admin-password"
+                      type="password"
+                      autoComplete="current-password"
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      aria-invalid={Boolean(error) || undefined}
+                      required
+                    />
+                  </Field>
+                </FieldGroup>
+                <Button type="submit" size="lg" className="w-full" disabled={submitting || !email.trim() || !password}>
+                  {submitting ? "正在验证…" : "登录管理后台"}
+                  {!submitting ? <ArrowRight data-icon="inline-end" aria-hidden="true" /> : null}
+                </Button>
+              </form>
+          </div>
+        </section>
+      </div>
     </main>
   )
 }
