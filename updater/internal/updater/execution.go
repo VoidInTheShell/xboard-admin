@@ -974,7 +974,8 @@ func (a *Agent) continueAdminHandoff(ctx context.Context, j *Journal, handoff Ha
 		return loadErr
 	}
 	if err := a.cleanupPreviousUpdater(ctx, j.Target, completed); err != nil {
-		return a.recoverHandoff(ctx, j, "无法固定目标 Updater 服务")
+		fmt.Fprintf(os.Stderr, "xboard-updater: pin updater service failed: %v\n", err)
+		return a.recoverHandoff(ctx, j, fmt.Sprintf("无法固定目标 Updater 服务：%v", err))
 	}
 	result := map[string]any{"version": j.Task.Version, "updater_version": handoff.ToUpdaterVersion}
 	if err := a.handoffEvent(ctx, j, "succeeded", HandoffSucceeded, "升级完成，Admin 与 Updater 版本及健康检查通过", result, ""); err != nil {
