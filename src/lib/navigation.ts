@@ -57,6 +57,7 @@ export const adminNavigation: AdminNavGroup[] = [
     icon: Layers3,
     items: [
       { title: "服务器管理", path: "/servers", icon: Server, keywords: ["机器", "主机"] },
+      { title: "证书管理", path: "/certificates", icon: KeyRound, keywords: ["证书", "TLS", "ACME", "到期", "续签"] },
       { title: "出站管理", path: "/outbounds", icon: Route, keywords: ["出口", "代理链"] },
       { title: "节点管理", path: "/nodes", icon: Globe2, keywords: ["倍率", "流量"] },
       { title: "权限组管理", path: "/permission-groups", icon: ShieldCheck, keywords: ["分组", "可见性"] },

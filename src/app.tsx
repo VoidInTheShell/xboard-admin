@@ -13,6 +13,9 @@ const LeaderboardPage = lazy(() => import('@/pages/leaderboard-page').then(modul
 const ServersPage = lazy(() =>
   import("@/pages/servers-page").then((module) => ({ default: module.ServersPage })),
 )
+const CertificatesPage = lazy(() =>
+  import("@/pages/certificates-page").then((module) => ({ default: module.CertificatesPage })),
+)
 const ServerWorkspacePage = lazy(() =>
   import("@/pages/server-workspace-page").then((module) => ({ default: module.ServerWorkspacePage })),
 )
@@ -87,6 +90,7 @@ export function App() {
               <Route path="usage" element={<UsagePage />} />
               <Route path="leaderboard" element={<LeaderboardPage />} />
               <Route path="servers" element={<ServersPage />} />
+              <Route path="certificates" element={<CertificatesPage />} />
               <Route path="servers/:serverId/outbounds" element={<Navigate to="/outbounds" replace />} />
               <Route path="servers/:serverId/:section" element={<ServerWorkspacePage />} />
               <Route path="outbounds" element={<OutboundsPage />} />

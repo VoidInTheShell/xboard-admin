@@ -1,9 +1,10 @@
 import * as React from 'react'
-import { Check, ChevronDown, ChevronRight, Plus, RefreshCw, RotateCw, ShieldCheck, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, RefreshCw, RotateCw, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAdminApi } from '@/lib/auth'
 import { getErrorMessage, useAdminQuery } from '@/hooks/use-admin-query'
 import { CertificateDialog } from '@/components/control-plane/certificate-dialog'
+import { CertificateReferenceDialog, CertificateReferenceList } from '@/components/control-plane/certificate-reference-dialog'
 import { ConfirmActionDialog } from '@/components/control-plane/confirm-action-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -156,7 +157,7 @@ export function CertificateWorkspace({ machineId }: { machineId: number }) {
                         <td className="px-4 py-4"><button type="button" className="inline-flex items-center gap-1 rounded-lg px-2 py-1 font-data text-xs hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setExpanded(isExpanded ? null : record.id)} aria-expanded={isExpanded}>{record.references.length}<span className="font-sans text-muted-foreground">个</span>{isExpanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}</button></td>
                         <td className="px-4 py-4"><div className="flex justify-end gap-1"><Button variant="ghost" size="sm" onClick={() => void renew(record)} disabled={renewing === record.id || record.status === 'issuing'}><RotateCw data-icon="inline-start" />{renewing === record.id ? '续签中…' : '续签'}</Button><Button variant="ghost" size="sm" onClick={() => { setEditing(record); setCreateOpen(true) }}>编辑</Button><Button variant="ghost" size="icon-sm" className="text-destructive hover:text-destructive" aria-label={`删除 ${record.name}`} onClick={() => setRemove(record)}><Trash2 /></Button></div></td>
                       </tr>
-                      {isExpanded && <tr className="border-t bg-muted/15"><td colSpan={7} className="px-4 py-4 sm:px-5"><ReferenceList record={record} /></td></tr>}
+                      {isExpanded && <tr className="border-t bg-muted/15"><td colSpan={7} className="px-4 py-4 sm:px-5"><CertificateReferenceList record={record} /></td></tr>}
                     </React.Fragment>
                   })}
                 </tbody>
@@ -175,16 +176,7 @@ export function CertificateWorkspace({ machineId }: { machineId: number }) {
         busy={false}
         onConfirm={async () => { if (remove) await drop(remove) }}
       />
-      {remove?.references.length ? <ReferenceBlockDialog record={remove} onClose={() => setRemove(null)} /> : null}
+      {remove?.references.length ? <CertificateReferenceDialog record={remove} onOpenChange={(open) => !open && setRemove(null)} /> : null}
     </div>
   )
-}
-
-function ReferenceList({ record }: { record: ServerCertificate }) {
-  if (!record.references.length) return <p className="text-sm text-muted-foreground">暂无配置引用，可以安全删除或编辑。</p>
-  return <div className="flex flex-col gap-2"><div className="flex items-center gap-2 text-sm font-medium"><ShieldCheck className="size-4" aria-hidden="true" />引用清单</div><div className="grid gap-2 md:grid-cols-2">{record.references.map((reference) => <div key={`${reference.target_type}:${reference.target_id}:${reference.usage}`} className="rounded-xl border bg-background p-3"><div className="flex flex-wrap items-center justify-between gap-2"><span className="font-medium">{reference.target_name}</span><Badge variant="outline">{reference.usage === 'server' ? '服务端' : reference.usage === 'client' ? '客户端' : '签发'}</Badge></div><p className="mt-1 text-xs text-muted-foreground">{reference.instance_name} · {reference.protocol} · {reference.target_type}</p></div>)}</div></div>
-}
-
-function ReferenceBlockDialog({ record, onClose }: { record: ServerCertificate; onClose: () => void }) {
-  return <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-label="证书引用清单" onClick={onClose}><div className="w-full max-w-lg rounded-2xl border bg-background p-5 shadow-xl" onClick={(event) => event.stopPropagation()}><div className="flex items-start justify-between gap-3"><div><h2 className="text-base font-semibold">无法删除：证书仍被引用</h2><p className="mt-1 text-sm text-muted-foreground">先处理以下 {record.references.length} 个引用，再执行删除。</p></div><Button variant="ghost" size="icon-sm" aria-label="关闭引用清单" onClick={onClose}>×</Button></div><div className="mt-4"><ReferenceList record={record} /></div><div className="mt-5 flex justify-end"><Button variant="outline" onClick={onClose}><Check data-icon="inline-start" />知道了</Button></div></div></div>
 }

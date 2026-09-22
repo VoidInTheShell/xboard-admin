@@ -130,7 +130,7 @@ function installStatusLabel(machine: Machine) {
   return 'Updater 已登记，等待最近心跳'
 }
 
-function previewMachines(): Machine[] {
+export function previewMachines(): Machine[] {
   return [
     {
       id: 1,
