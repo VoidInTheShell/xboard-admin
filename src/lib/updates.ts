@@ -50,6 +50,7 @@ export type UpdateTask = {
   status: string
   created_at: string
   message?: string
+  stalled?: boolean
 }
 export type UpdateOverview = {
   panel: { name: string; updater_ready: boolean; updater_version?: string | null; update_protocol?: number | null; handoff_status?: string | null; reason?: string; components: InstalledComponent[] }

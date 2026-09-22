@@ -61,6 +61,17 @@ function previewUpdateOverview(): UpdateOverview {
   }
 }
 
+function previewStalledTask(): UpdateTask {
+  return {
+    task_id: "preview-stalled",
+    target_name: "GJHK 预览服务器 / 备用节点实例",
+    target_version: "v9.9.9",
+    status: "preparing",
+    created_at: new Date(Date.now() - 26 * 60 * 1000).toISOString(),
+    stalled: true,
+  }
+}
+
 export function UpdatesPage() {
   const [params, setParams] = useSearchParams()
   const section = params.get("section") === "servers" ? "servers" : "panel"
@@ -79,7 +90,7 @@ export function UpdatesPage() {
 
 function UpdateWorkspace({ panelMode }: { panelMode: boolean }) {
   const api = useAdminApi()
-  const [overview, setOverview] = useState<UpdateOverview | null>(() => certificatePreviewEnabled ? previewUpdateOverview() : null)
+  const [overview, setOverview] = useState<UpdateOverview | null>(() => certificatePreviewEnabled ? { ...previewUpdateOverview(), tasks: [previewStalledTask()] } : null)
   const [refresh, setRefresh] = useState(0)
   const [loading, setLoading] = useState(!certificatePreviewEnabled)
   const [error, setError] = useState("")
@@ -94,7 +105,7 @@ function UpdateWorkspace({ panelMode }: { panelMode: boolean }) {
   }, [api, panelMode, refresh])
   function reload() {
     if (certificatePreviewEnabled) {
-      setOverview(previewUpdateOverview())
+      setOverview({ ...previewUpdateOverview(), tasks: [previewStalledTask()] })
       setError("")
       setLoading(false)
       return
@@ -131,7 +142,7 @@ function UpdateWorkspace({ panelMode }: { panelMode: boolean }) {
     {loading ? <Skeleton className="h-64 w-full" role="status" aria-label="正在读取版本" /> : !error && <UpdateTable targets={targets} panelMode={panelMode} onCreated={reload} />}
     {overview && <Card><CardHeader><CardTitle>更新记录</CardTitle><CardDescription>查看更新结果，执行中的任务可通过检查更新刷新。</CardDescription></CardHeader><CardContent>
       {!overview.tasks.length ? <Empty><EmptyHeader><EmptyTitle>暂无更新记录</EmptyTitle><EmptyDescription>创建更新任务后，可在这里查看进度和结果。</EmptyDescription></EmptyHeader></Empty> : <Table><TableHeader><TableRow><TableHead className="min-w-40">更新对象</TableHead><TableHead className="whitespace-nowrap">目标版本</TableHead><TableHead>状态</TableHead><TableHead className="whitespace-nowrap">创建时间</TableHead><TableHead className="w-16">操作</TableHead></TableRow></TableHeader><TableBody>
-        {overview.tasks.map(task => <TableRow key={task.task_id}><TableCell className="max-w-64">{task.target_name}{task.message && <p className="mt-1 whitespace-normal text-xs text-muted-foreground">{task.message}</p>}</TableCell><TableCell className="whitespace-nowrap font-data">{task.target_version}</TableCell><TableCell><Badge variant={task.status === "failed" || task.status === "rollback_failed" ? "destructive" : "secondary"}>{updateStatusLabels[task.status] || task.status}</Badge></TableCell><TableCell className="whitespace-nowrap font-data">{new Date(task.created_at).toLocaleString("zh-CN")}</TableCell><TableCell>{["succeeded", "failed", "rolled_back", "rollback_failed"].includes(task.status) ? null : <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-destructive hover:text-destructive" disabled={abortingId === task.task_id} onClick={() => void abortTask(task.task_id)}>{abortingId === task.task_id ? "中止中…" : "中止"}</Button>}</TableCell></TableRow>)}
+        {overview.tasks.map(task => <TableRow key={task.task_id}><TableCell className="max-w-64">{task.target_name}{task.message && <p className="mt-1 whitespace-normal text-xs text-muted-foreground">{task.message}</p>}</TableCell><TableCell className="whitespace-nowrap font-data">{task.target_version}</TableCell><TableCell><Badge variant={task.status === "failed" || task.status === "rollback_failed" ? "destructive" : "secondary"}>{updateStatusLabels[task.status] || task.status}</Badge>{task.stalled && <p className="mt-1 max-w-48 whitespace-normal text-xs text-amber-700 dark:text-amber-300">长时间无进展，可中止后重新发起更新。</p>}</TableCell><TableCell className="whitespace-nowrap font-data">{new Date(task.created_at).toLocaleString("zh-CN")}</TableCell><TableCell>{["succeeded", "failed", "rolled_back", "rollback_failed"].includes(task.status) ? null : <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-destructive hover:text-destructive" disabled={abortingId === task.task_id} onClick={() => void abortTask(task.task_id)}>{abortingId === task.task_id ? "中止中…" : "中止"}</Button>}</TableCell></TableRow>)}
       </TableBody></Table>}
     </CardContent></Card>}
   </div>
