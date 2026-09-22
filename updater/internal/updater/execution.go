@@ -243,7 +243,13 @@ func (a *Agent) cleanupPreviousUpdater(ctx context.Context, t Target, handoff Ha
 		if strings.TrimSpace(status) != "running" {
 			if _, rmErr := a.exec(ctx, "docker", "rm", previous); rmErr != nil {
 				if _, inspectErr := a.exec(ctx, "docker", "inspect", previous); inspectErr == nil {
-					return fmt.Errorf("remove stopped previous updater: %w", rmErr)
+					// The restart policy keeps the superseded service container in a
+					// restarting state where a plain rm is refused. Force-remove it:
+					// journal ownership already moved to the target updater, so the
+					// old process has nothing durable left to write.
+					if _, forceErr := a.exec(ctx, "docker", "rm", "-f", previous); forceErr != nil {
+						return fmt.Errorf("remove stopped previous updater: %w", rmErr)
+					}
 				}
 			}
 			previousGone = true
