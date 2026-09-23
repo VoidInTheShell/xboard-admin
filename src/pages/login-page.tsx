@@ -80,16 +80,20 @@ export function LoginPage() {
             className="pointer-events-none absolute inset-0 rounded-3xl border-t border-white/35 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.22)] lg:rounded-none"
           />
 
-          <div className="relative flex h-full flex-col justify-center px-6 py-6 sm:px-8 sm:py-8 lg:px-11 lg:pb-[10vh] lg:pt-0">
-            {/* 站点品牌：居中于登录表单上方（桌面端整体居中偏上，底部留 10% 间隙） */}
-            <header className="flex items-center justify-center gap-3 pb-6 lg:pb-8">
-              <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl border border-white/25 bg-primary/90 text-primary-foreground shadow-sm">
-                {brand.logo ? <img src={brand.logo} alt="" className="size-full rounded-2xl object-contain p-1" /> : <Network aria-hidden="true" />}
-              </span>
-              <div className="min-w-0 rounded-2xl bg-black/40 px-3 py-1.5 backdrop-blur-md">
-                <div className="truncate text-sm font-semibold text-white">{brand.appName}</div>
-                <div className="truncate text-xs text-white/70">{brand.description || "管理后台"}</div>
-              </div>
+          <div className="relative flex h-full flex-col px-6 py-6 sm:px-8 sm:py-8 lg:px-11 lg:pb-[10vh] lg:pt-0">
+            {/* 站点品牌：仅保留图标，放大后居中于登录表单上方的毛玻璃区域 */}
+            <header className="flex flex-1 items-center justify-center pb-8 lg:pb-10">
+              {brand.logo ? (
+                <img
+                  src={brand.logo}
+                  alt={brand.appName}
+                  className="size-40 shrink-0 object-contain drop-shadow-[0_10px_36px_rgba(2,6,17,0.55)] lg:size-[200px]"
+                />
+              ) : (
+                <span className="flex size-40 shrink-0 items-center justify-center rounded-3xl border border-white/25 bg-white/10 text-white shadow-sm lg:size-[200px]">
+                  <Network className="size-16 lg:size-24" aria-hidden="true" />
+                </span>
+              )}
             </header>
 
             <form onSubmit={submit} className="flex w-full flex-col gap-5 lg:mx-auto lg:max-w-sm">
