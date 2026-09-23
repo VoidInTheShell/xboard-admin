@@ -9,6 +9,7 @@ import {
   Search,
   Eye,
   EyeOff,
+  MoreHorizontal,
   Power,
   PowerOff,
   Settings2,
@@ -47,6 +48,14 @@ import {
   TableHead,
   TableCell,
 } from '@/components/ui/table'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { useAdminApi } from '@/lib/auth'
 import { getErrorMessage, useAdminQuery } from '@/hooks/use-admin-query'
 import type { RuntimeNode } from '@/lib/control-plane/runtime-api'
@@ -350,31 +359,47 @@ export function NodesPage() {
                         <SlidersHorizontal data-icon="inline-start" />
                         业务属性
                       </Button>
-                      {node.machine_id && (
-                        <Button asChild variant="outline" size="sm">
-                          <Link
-                            to={
-                              '/servers/' +
-                              node.machine_id +
-                              '/inbounds?instance=' +
-                              node.id
-                            }
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="icon-sm"
+                            disabled={pageBusy}
+                            aria-label={node.name + ' 更多操作'}
                           >
-                            <Settings2 data-icon="inline-start" />
-                            入站配置
-                          </Link>
-                        </Button>
-                      )}
-                      <Button
-                        variant="outline"
-                        size="icon-sm"
-                        className="text-destructive hover:text-destructive"
-                        aria-label={'删除节点 ' + node.name}
-                        disabled={pageBusy}
-                        onClick={() => setRemoving(node)}
-                      >
-                        <Trash2 />
-                      </Button>
+                            <MoreHorizontal aria-hidden="true" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-40">
+                          <DropdownMenuGroup>
+                            {node.machine_id ? (
+                              <DropdownMenuItem asChild>
+                                <Link
+                                  to={
+                                    '/servers/' +
+                                    node.machine_id +
+                                    '/inbounds?instance=' +
+                                    node.id
+                                  }
+                                >
+                                  <Settings2 aria-hidden="true" />
+                                  入站配置
+                                </Link>
+                              </DropdownMenuItem>
+                            ) : null}
+                          </DropdownMenuGroup>
+                          {(node.machine_id ?? false) && <DropdownMenuSeparator />}
+                          <DropdownMenuGroup>
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onSelect={() => setRemoving(node)}
+                            >
+                              <Trash2 aria-hidden="true" />
+                              删除节点
+                            </DropdownMenuItem>
+                          </DropdownMenuGroup>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </ButtonGroup>
                   </TableCell>
                 </TableRow>
