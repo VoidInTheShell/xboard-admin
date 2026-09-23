@@ -31,7 +31,36 @@ type Config struct {
 	UpdaterService   string   `json:"updater_service,omitempty"`
 	DeploymentDir    string   `json:"deployment_dir,omitempty"`
 	UpdaterImage     string   `json:"updater_image,omitempty"`
+	PanelEntry       *PanelEntryConfig `json:"panel_entry,omitempty"`
 	Targets          []Target `json:"targets"`
+}
+
+// PanelEntryConfig describes the public HTTPS entry gateway (Caddy overlay)
+// whose Caddyfile this updater renders from panel-scope certificate
+// resources. All paths are container-visible paths of this updater.
+type PanelEntryConfig struct {
+	Enabled              bool     `json:"enabled"`
+	CaddyContainer       string   `json:"caddy_container"`
+	CaddyfilePath        string   `json:"caddyfile_path"`
+	CaddyConfigPath      string   `json:"caddy_config_path,omitempty"`      // inside the Caddy container
+	CaddyDataPath        string   `json:"caddy_data_path"`                  // updater-visible read-only mount of Caddy's storage
+	CaddyInternalDataPath string  `json:"caddy_internal_data_path,omitempty"` // inside the Caddy container
+	CertMaterialDir      string   `json:"cert_material_dir,omitempty"`       // shared volume with the Caddy container
+	SeedDomains          []string `json:"seed_domains"`
+	ThemeUpstream        string   `json:"theme_upstream"`
+}
+
+func (p PanelEntryConfig) canonical() PanelEntryConfig {
+	if p.CaddyConfigPath == "" {
+		p.CaddyConfigPath = "/etc/caddy/Caddyfile"
+	}
+	if p.CaddyInternalDataPath == "" {
+		p.CaddyInternalDataPath = "/data"
+	}
+	if p.CertMaterialDir == "" {
+		p.CertMaterialDir = "/entry-certs"
+	}
+	return p
 }
 type Target struct {
 	ID             string `json:"id"`
@@ -56,6 +85,43 @@ type Target struct {
 	Verify  []string `json:"verify,omitempty"`
 	Restore []string `json:"restore,omitempty"`
 	Resume  []string `json:"resume,omitempty"`
+}
+
+var domainPattern = regexp.MustCompile(`^(\*\.)?([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,63}$`)
+var emailPattern = regexp.MustCompile(`^[^\s@,;\"'<>]{1,64}@[^\s@,;\"'<>]{3,190}$`)
+
+func (p PanelEntryConfig) validate() error {
+	p = p.canonical()
+	if !p.Enabled {
+		return nil
+	}
+	if !namePattern.MatchString(p.CaddyContainer) {
+		return errors.New("caddy_container is required")
+	}
+	for _, path := range []string{p.CaddyfilePath, p.CaddyConfigPath, p.CaddyDataPath, p.CaddyInternalDataPath, p.CertMaterialDir} {
+		if !filepath.IsAbs(path) || filepath.Clean(path) == string(filepath.Separator) {
+			return errors.New("panel entry paths must be absolute")
+		}
+	}
+	upstream, err := url.Parse(p.ThemeUpstream)
+	if err != nil || upstream.Host == "" || (upstream.Scheme != "http" && upstream.Scheme != "https") {
+		return errors.New("theme_upstream requires an http(s) URL")
+	}
+	if upstream.RawQuery != "" || upstream.Fragment != "" {
+		return errors.New("theme_upstream must not carry query or fragment")
+	}
+	seen := map[string]bool{}
+	for _, domain := range p.SeedDomains {
+		domain = strings.ToLower(strings.TrimSpace(domain))
+		if seen[domain] || !domainPattern.MatchString(domain) {
+			return errors.New("seed_domains must be unique public domain names")
+		}
+		seen[domain] = true
+	}
+	if len(p.SeedDomains) == 0 {
+		return errors.New("seed_domains is required while the entry is enabled")
+	}
+	return nil
 }
 
 func (t Target) DatabaseRecovery() bool {
@@ -166,6 +232,11 @@ func (c Config) Validate() error {
 	}
 	if c.UpdaterImage != "" && (strings.TrimSpace(c.UpdaterImage) != c.UpdaterImage || strings.ContainsAny(c.UpdaterImage, "\r\n\t \"'")) {
 		return errors.New("invalid updater_image")
+	}
+	if c.PanelEntry != nil {
+		if err := c.PanelEntry.validate(); err != nil {
+			return fmt.Errorf("invalid panel_entry: %w", err)
+		}
 	}
 	if len(c.Targets) == 0 {
 		return errors.New("no local update targets configured")

@@ -97,15 +97,27 @@ func isAuthAPIError(err error) bool {
 }
 
 func (a *Agent) api(ctx context.Context, action string, input any, output any) error {
+	return a.apiDo(ctx, "POST", action, input, output)
+}
+
+func (a *Agent) apiGet(ctx context.Context, action string, output any) error {
+	return a.apiDo(ctx, "GET", action, nil, output)
+}
+
+func (a *Agent) apiDo(ctx context.Context, method string, action string, input any, output any) error {
 	token, err := os.ReadFile(a.Config.TokenFile)
 	if err != nil {
 		return err
 	}
-	payload, err := json.Marshal(input)
-	if err != nil {
-		return err
+	var reader io.Reader
+	if input != nil {
+		payload, err := json.Marshal(input)
+		if err != nil {
+			return err
+		}
+		reader = bytes.NewReader(payload)
 	}
-	req, err := http.NewRequestWithContext(ctx, "POST", strings.TrimRight(a.Config.PanelURL, "/")+"/api/v2/update-executor/"+action, bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(a.Config.PanelURL, "/")+"/api/v2/update-executor/"+action, reader)
 	if err != nil {
 		return err
 	}
@@ -716,6 +728,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		a.setDegraded(fmt.Errorf("invalid updater handoff: manual recovery required: %v", err))
 	}
 	go a.heartbeatLoop(ctx)
+	go a.panelEntryLoop(ctx)
 	if err := a.heartbeat(ctx); err != nil { // first beat immediately; the loop repeats
 		fmt.Fprintln(os.Stderr, "xboard-updater: heartbeat:", err)
 	}

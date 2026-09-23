@@ -60,3 +60,33 @@ contract is verified by the GitHub workflow.
 The updater source is shared with the native Node updater through the release
 artifacts. Xboard-Node's compatibility command is only a shim and does not
 maintain a second active updater implementation.
+
+## Panel entry and panel certificates
+
+When the deployment uses the Caddy HTTPS entry (`compose.entry.sample.yaml`
+from the Xboard repository), the bootstrap records a `panel_entry` object in
+the updater configuration:
+
+```json
+"panel_entry": {
+  "enabled": true,
+  "caddy_container": "xboard-entry",
+  "caddyfile_path": "/deploy/entry/Caddyfile",
+  "caddy_config_path": "/etc/caddy/Caddyfile",
+  "caddy_data_path": "/entry-caddy-data",
+  "caddy_internal_data_path": "/data",
+  "cert_material_dir": "/entry-certs",
+  "seed_domains": ["panel.example.com"],
+  "theme_upstream": "http://xboard-theme:80"
+}
+```
+
+While enabled, the updater reconciles panel-scope certificate resources every
+minute: it renders the entry Caddyfile from the desired certificate list,
+materializes `content` sources into the shared `entry-certs` volume, reloads
+Caddy via `docker exec`, clears cached ACME certificates when a resource
+revision increases (domain change / manual re-issue), verifies the resulting
+certificates and reports status through the executor API. Seed domains keep
+the panel reachable while no certificate resource covers them. All fields
+are container-visible paths of the updater; unknown fields stay tolerated for
+rollback compatibility.
