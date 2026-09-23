@@ -56,6 +56,7 @@ function withMcpTab(tabs: CatalogTab[]) {
 export function SettingsPage() {
   const api = useAdminApi()
   const [logoFile, setLogoFile] = React.useState<File | null>(null)
+  const [userLogoFile, setUserLogoFile] = React.useState<File | null>(null)
   const [backgroundFile, setBackgroundFile] = React.useState<File | null>(null)
   const [supportedKeys, setSupportedKeys] = React.useState<string[]>([])
   const [catalog, setCatalog] = React.useState(systemSettingsCatalog)
@@ -103,7 +104,7 @@ export function SettingsPage() {
     () => baseline ? createConfigPayload(catalog, values, baseline) : {},
     [baseline, catalog, values],
   )
-  const dirtyCount = Object.keys(payload).length + (logoFile ? 1 : 0) + (backgroundFile ? 1 : 0)
+  const dirtyCount = Object.keys(payload).length + (logoFile ? 1 : 0) + (userLogoFile ? 1 : 0) + (backgroundFile ? 1 : 0)
 
   async function saveSettings() {
     if (!baseline || !dirtyCount) return
@@ -112,7 +113,7 @@ export function SettingsPage() {
 
     try {
       for (const [key, value] of Object.entries(payload)) {
-        if ((key === "logo" || key === "admin_login_background" || key.endsWith("_support_telegram_url") || key.endsWith("_support_group_url")) && String(value ?? "").trim()) {
+        if ((key === "logo" || key === "user_logo" || key === "admin_login_background" || key.endsWith("_support_telegram_url") || key.endsWith("_support_group_url")) && String(value ?? "").trim()) {
           try {
             const url = key === "logo" ? new URL(String(value), window.location.origin) : new URL(String(value))
             if (!["http:", "https:"].includes(url.protocol)) throw new Error("invalid protocol")
@@ -129,6 +130,13 @@ export function SettingsPage() {
         if (!uploaded?.url) throw new Error("图片上传未返回地址，请重试。")
         nextPayload = { ...payload, logo: uploaded.url }
       }
+      if (userLogoFile) {
+        const data = new FormData()
+        data.append("file", userLogoFile)
+        const uploaded = await api.post<{ url: string }>("config/uploadUserLogo", data)
+        if (!uploaded?.url) throw new Error("图片上传未返回地址，请重试。")
+        nextPayload = { ...nextPayload, user_logo: uploaded.url }
+      }
       if (backgroundFile) {
         const data = new FormData()
         data.append("file", backgroundFile)
@@ -138,6 +146,7 @@ export function SettingsPage() {
       }
       await api.post<boolean>("config/save", nextPayload)
       setLogoFile(null)
+      setUserLogoFile(null)
       setBackgroundFile(null)
       await refreshSiteBranding()
       const securePathChanged = Object.hasOwn(payload, "secure_path")
@@ -212,6 +221,7 @@ export function SettingsPage() {
               disabled={saving || loading}
               onValuesChange={(next) => {
                 if (next["site.logo"] !== values["site.logo"]) setLogoFile(null)
+                if (next["frontend.user_logo"] !== values["frontend.user_logo"]) setUserLogoFile(null)
                 if (next["frontend.admin_login_background"] !== values["frontend.admin_login_background"]) setBackgroundFile(null)
                 setValues(next)
                 if (Object.keys(fieldErrors).length) setFieldErrors({})
@@ -221,8 +231,8 @@ export function SettingsPage() {
               navigationAppearance="cards"
               navigationDescriptions={navigationDescriptions}
               sidebarStickyOffset="page"
-              fieldControls={{ "site.logo": <SiteLogoField value={String(values["site.logo"] ?? "")} file={logoFile} disabled={saving || loading} onFileChange={setLogoFile} onValueChange={logo => { setLogoFile(null); setValues(current => ({ ...current, "site.logo": logo })) }} />, "frontend.admin_login_background": <LoginBackgroundField value={String(values["frontend.admin_login_background"] ?? "")} file={backgroundFile} disabled={saving || loading} onFileChange={setBackgroundFile} onValueChange={background => { setBackgroundFile(null); setValues(current => ({ ...current, "frontend.admin_login_background": background })) }} /> }}
-              tabContent={{ mcp: <McpSettingsPanel />, frontend: <CatalogForm tabs={(catalog.find(tab => tab.id === "frontend")?.sections ?? []).map(section => ({ id: section.id, title: section.title, icon: frontendIcons[section.id], sections: [section] }))} ariaLabel="主题控制" navigationStyle="underline" navigationLabel="前端分类" navigationAppearance="cards" sidebarStickyOffset="page" values={values} errors={fieldErrors} disabled={saving || loading} onValuesChange={setValues} fieldControls={{ "frontend.admin_login_background": <LoginBackgroundField value={String(values["frontend.admin_login_background"] ?? "")} file={backgroundFile} disabled={saving || loading} onFileChange={setBackgroundFile} onValueChange={background => { setBackgroundFile(null); setValues(current => ({ ...current, "frontend.admin_login_background": background })) }} /> }} /> }}
+              fieldControls={{ "site.logo": <SiteLogoField value={String(values["site.logo"] ?? "")} file={logoFile} disabled={saving || loading} onFileChange={setLogoFile} onValueChange={logo => { setLogoFile(null); setValues(current => ({ ...current, "site.logo": logo })) }} />, "frontend.user_logo": <SiteLogoField legend="用户后台 Logo" description="仅用于 DK Theme 用户后台的品牌图标；留空时沿用站点 Logo。" value={String(values["frontend.user_logo"] ?? "")} file={userLogoFile} disabled={saving || loading} onFileChange={setUserLogoFile} onValueChange={logo => { setUserLogoFile(null); setValues(current => ({ ...current, "frontend.user_logo": logo })) }} />, "frontend.admin_login_background": <LoginBackgroundField value={String(values["frontend.admin_login_background"] ?? "")} file={backgroundFile} disabled={saving || loading} onFileChange={setBackgroundFile} onValueChange={background => { setBackgroundFile(null); setValues(current => ({ ...current, "frontend.admin_login_background": background })) }} /> }}
+              tabContent={{ mcp: <McpSettingsPanel />, frontend: <CatalogForm tabs={(catalog.find(tab => tab.id === "frontend")?.sections ?? []).map(section => ({ id: section.id, title: section.title, icon: frontendIcons[section.id], sections: [section] }))} ariaLabel="主题控制" navigationStyle="underline" navigationLabel="前端分类" navigationAppearance="cards" sidebarStickyOffset="page" values={values} errors={fieldErrors} disabled={saving || loading} onValuesChange={setValues} fieldControls={{ "frontend.user_logo": <SiteLogoField legend="用户后台 Logo" description="仅用于 DK Theme 用户后台的品牌图标；留空时沿用站点 Logo。" value={String(values["frontend.user_logo"] ?? "")} file={userLogoFile} disabled={saving || loading} onFileChange={setUserLogoFile} onValueChange={logo => { setUserLogoFile(null); setValues(current => ({ ...current, "frontend.user_logo": logo })) }} />, "frontend.admin_login_background": <LoginBackgroundField value={String(values["frontend.admin_login_background"] ?? "")} file={backgroundFile} disabled={saving || loading} onFileChange={setBackgroundFile} onValueChange={background => { setBackgroundFile(null); setValues(current => ({ ...current, "frontend.admin_login_background": background })) }} /> }} /> }}
             />
           ) : null}
         </CardContent>

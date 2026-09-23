@@ -4,10 +4,12 @@ import { Field, FieldDescription, FieldLabel, FieldLegend, FieldSet } from '@/co
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
-export function SiteLogoField({ value, file, disabled, onValueChange, onFileChange }: {
+export function SiteLogoField({ value, file, disabled, onValueChange, onFileChange, legend = '站点 Logo', description = '用于用户后台与管理后台的品牌标识。' }: {
   value: string
   file: File | null
   disabled: boolean
+  legend?: string
+  description?: string
   onValueChange: (value: string) => void
   onFileChange: (file: File | null) => void
 }) {
@@ -16,7 +18,7 @@ export function SiteLogoField({ value, file, disabled, onValueChange, onFileChan
   const urlId = React.useId()
   return (
     <FieldSet className="min-w-0 rounded-2xl border p-4" disabled={disabled}>
-      <FieldLegend>站点 Logo</FieldLegend>
+      <FieldLegend>{legend}</FieldLegend>
       <div className="grid min-w-0 gap-4 @min-[34rem]/catalog-section:grid-cols-2">
         <Field className="min-w-0">
           <FieldLabel htmlFor={sourceId}>来源</FieldLabel>
@@ -36,12 +38,12 @@ export function SiteLogoField({ value, file, disabled, onValueChange, onFileChan
         ) : (
           <Field className="min-w-0">
             <FieldLabel>图片文件</FieldLabel>
-            <ClientLogoUpload label="站点 Logo" file={file} currentUrl={value} disabled={disabled} onChange={onFileChange} />
-            <FieldDescription>裁剪后预览，保存配置时上传。未替换时保留已有 Logo。</FieldDescription>
+            <ClientLogoUpload label={legend} file={file} currentUrl={value} disabled={disabled} onChange={onFileChange} />
+            <FieldDescription>点击选择图片并裁剪，保存配置时上传。未替换时保留已有 Logo。</FieldDescription>
           </Field>
         )}
       </div>
-      <FieldDescription>用于用户后台与管理后台的品牌标识。</FieldDescription>
+      <FieldDescription>{description}</FieldDescription>
     </FieldSet>
   )
 }

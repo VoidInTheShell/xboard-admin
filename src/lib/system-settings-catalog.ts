@@ -172,6 +172,7 @@ export const systemSettingsCatalog: CatalogTab[] = [
       description: "DK Theme 的登录页面、菜单和展示方式。",
       fields: [
         setting("frontend", "self_use_mode", { label: "自用模式", control: "switch", description: "隐藏首页补充指标，并向所有用户显示节点所属服务器的剩余流量。", span: 2 }),
+        setting("frontend", "user_logo", { label: "用户后台 Logo", control: "text", placeholder: "https://example.com/logo.png", span: 2, description: "仅用于 DK Theme 用户后台的品牌图标。可填写图片链接，或上传并裁剪图片；留空时沿用站点 Logo。" }),
         setting("frontend", "user_login_title", { label: "登录页标题", control: "text", placeholder: "欢迎使用 {站点名称}", span: 2 }),
         setting("frontend", "user_login_description", { label: "登录页描述", control: "textarea", description: "留空时使用通用站点描述。", span: 2 }),
         setting("frontend", "user_hidden_menus", { label: "隐藏菜单", control: "multiselect", options: [

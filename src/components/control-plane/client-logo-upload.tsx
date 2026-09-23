@@ -5,7 +5,7 @@ import ReactCrop, {
   type PercentCrop,
 } from 'react-image-crop'
 import 'react-image-crop/dist/ReactCrop.css'
-import { Crop, ImagePlus, RotateCcw } from 'lucide-react'
+import { ImagePlus, RotateCcw } from 'lucide-react'
 import {
   cropClientLogo,
   logoCropBounds,
@@ -62,55 +62,42 @@ export function ClientLogoUpload({
   onChange: (file: File | null) => void
 }) {
   const [open, setOpen] = React.useState(false)
-  const preview = useFileUrl(file)
   return (
-    <div className="flex min-w-0 flex-col gap-3">
-      <div className="flex min-w-0 items-center gap-3 rounded-xl border bg-muted/30 p-3">
-        <div className="flex size-14 shrink-0 items-center justify-center rounded-xl border bg-background p-1.5">
-          {preview || currentUrl ? (
-            <img
-              className="size-full object-contain"
-              src={preview || currentUrl || undefined}
-              alt={`${label}预览`}
-            />
-          ) : (
-            <ImagePlus
-              className="size-6 text-muted-foreground"
-              aria-hidden="true"
-            />
-          )}
-        </div>
-        <div className="min-w-0 text-sm">
-          <p>
-            {file ? '图标已准备好' : currentUrl ? '当前图标' : '尚未选择图标'}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {file
-              ? `${CLIENT_LOGO_SIZE} × ${CLIENT_LOGO_SIZE} · PNG · 保存后上传`
-              : '正方形图标 · PNG'}
-          </p>
-        </div>
-      </div>
-      <ButtonGroup>
-        <Button
-          variant="outline"
+    <div className="flex min-w-0 flex-col gap-2">
+      <div className="flex h-14 w-full items-center gap-3 rounded-xl border bg-muted/30 px-3 transition-colors hover:bg-muted/50">
+        <ImagePlus
+          className="size-5 shrink-0 text-muted-foreground"
+          aria-hidden="true"
+        />
+        <button
+          type="button"
           disabled={disabled}
+          className="flex min-w-0 flex-1 self-stretch items-center text-left text-sm focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50"
+          aria-label={`编辑${label}`}
           onClick={() => setOpen(true)}
         >
-          <Crop data-icon="inline-start" />
-          编辑并上传
-        </Button>
+          <span className="min-w-0 truncate">
+            {file
+              ? `已选择新图标（${CLIENT_LOGO_SIZE} × ${CLIENT_LOGO_SIZE} PNG，保存时上传）`
+              : currentUrl
+                ? '点击上传并裁剪替换图标'
+                : '点击选择图片并裁剪图标'}
+          </span>
+        </button>
         {file ? (
           <Button
-            variant="outline"
+            type="button"
+            variant="ghost"
+            size="sm"
             disabled={disabled}
+            className="h-8 shrink-0 px-2 text-xs"
             onClick={() => onChange(null)}
           >
-            <RotateCcw data-icon="inline-start" />
-            撤销替换
+            <RotateCcw data-icon="inline-start" aria-hidden="true" />
+            撤销
           </Button>
         ) : null}
-      </ButtonGroup>
+      </div>
       <Dialog open={open} onOpenChange={setOpen}>
         {open ? (
           <LogoCropContent
