@@ -621,7 +621,7 @@ export function ServersPage() {
                       <ButtonGroup aria-label={`${machine.name} 操作`} className="ml-auto">
                         <Button variant="outline" size="sm" onClick={() => setInformation({ machine, tab: 'history' })}>信息</Button>
                         <Button variant="outline" size="sm" asChild>
-                          <Link to={'/servers/' + machine.id + '/certificates'}>
+                          <Link to={'/servers/' + machine.id + '/inbounds'}>
                             配置
                             <ArrowRight data-icon="inline-end" />
                           </Link>

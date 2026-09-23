@@ -91,6 +91,7 @@ export function App() {
               <Route path="leaderboard" element={<LeaderboardPage />} />
               <Route path="servers" element={<ServersPage />} />
               <Route path="certificates" element={<CertificatesPage />} />
+              <Route path="servers/:serverId/certificates" element={<Navigate to="/certificates" replace />} />
               <Route path="servers/:serverId/outbounds" element={<Navigate to="/outbounds" replace />} />
               <Route path="servers/:serverId/:section" element={<ServerWorkspacePage />} />
               <Route path="outbounds" element={<OutboundsPage />} />

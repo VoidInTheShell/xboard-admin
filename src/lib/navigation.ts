@@ -104,7 +104,6 @@ export const adminStandaloneNavigation: AdminNavItem[] = [
 ]
 
 export const serverWorkspaceTabs = [
-  { title: "证书管理", value: "certificates", icon: KeyRound },
   { title: "入站", value: "inbounds", icon: Layers3 },
   { title: "发布端点", value: "hosts", icon: Activity },
   { title: "回落站点", value: "fallback", icon: PanelsTopLeft },

@@ -13,7 +13,6 @@ import { toast } from 'sonner'
 import { PageHeader } from '@/components/layout/page-header'
 import { WireDialog, WireEditor } from '@/components/control-plane/wire-editor'
 import { RuntimeNodeDialog } from '@/components/control-plane/runtime-node-dialog'
-import { CertificateWorkspace } from '@/components/control-plane/certificate-workspace'
 import { RuleFilesManagerDialog } from '@/components/control-plane/rule-files-manager-dialog'
 import { FallbackSiteEditor } from '@/components/control-plane/fallback-site-editor'
 import { ResourceError } from '@/components/control-plane/resource-states'
@@ -75,7 +74,6 @@ import {
   machineStatus,
 } from '@/lib/control-plane/runtime-api'
 import type { CatalogTab } from '@/lib/control-plane/catalog-types'
-import { certificatePreviewEnabled } from '@/lib/control-plane/certificate-types'
 
 const rawCatalog: CatalogTab[] = [
   {
@@ -168,31 +166,16 @@ type Editor = {
   value: JsonObject
 } | null
 
-function previewMachine(machineId: number): Machine {
-  return {
-    id: machineId,
-    name: 'GJHK 预览服务器',
-    notes: '仅用于本地前端预览，不会写入服务器。',
-    is_active: true,
-    last_seen_at: '2026-09-17T08:30:00Z',
-    servers_count: 0,
-    load_status: null,
-  }
-}
-
 export function ServerWorkspacePage() {
   const navigate = useNavigate()
   const params = useParams()
   const machineId = Number(params.serverId ?? params.id)
-  const active = params.tab ?? params.section ?? 'certificates'
+  const active = params.tab ?? params.section ?? 'inbounds'
   const api = useAdminApi()
   const [search, setSearch] = useSearchParams()
   const query = useAdminQuery(
     React.useCallback(
       async (signal) => {
-        if (certificatePreviewEnabled) {
-          return { machine: previewMachine(machineId), nodes: [] }
-        }
         const [machines, nodes] = await Promise.all([
           api.get<Machine[]>('server/machine/fetch', undefined, signal),
           api.get<RuntimeNode[]>('server/manage/getNodes', undefined, signal),
@@ -512,7 +495,7 @@ export function ServerWorkspacePage() {
     const outbound = path.match(/^xray_config\.outbounds\.(\d+)/)
     const rule = path.match(/^xray_config\.routing\.rules\.(\d+)/)
     const route = path.startsWith('cert_config')
-      ? 'certificates'
+      ? 'xray-config'
       : inbound
         ? 'inbounds'
         : outbound
@@ -653,9 +636,7 @@ export function ServerWorkspacePage() {
                   machineId +
                   '/' +
                   tab.value +
-                  (node && tab.value !== 'certificates'
-                    ? '?instance=' + node.id
-                    : '')
+                  (node ? '?instance=' + node.id : '')
                 }
               >
                 <tab.icon data-icon="inline-start" />
@@ -681,8 +662,6 @@ export function ServerWorkspacePage() {
       )}
       {query.loading || resource.loading ? (
         <Skeleton className="h-64 w-full" />
-      ) : active === 'certificates' ? (
-        <CertificateWorkspace machineId={machineId} />
       ) : !node ? (
         <Card>
           <CardHeader>

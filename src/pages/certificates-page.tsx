@@ -194,7 +194,7 @@ export function CertificatesPage() {
       </td>
       {showMachine ? (
         <td className="px-4 py-4">
-          <Link className="text-sm hover:underline focus-visible:outline-2 focus-visible:outline-ring" to={`/servers/${row.machine_id}/certificates`}>{row.machineName}</Link>
+          <Link className="text-sm hover:underline focus-visible:outline-2 focus-visible:outline-ring" to={`/servers/${row.machine_id}/inbounds`}>{row.machineName}</Link>
         </td>
       ) : null}
       <td className="whitespace-nowrap px-4 py-4">{certificateSourceLabels[row.source_type]}</td>
