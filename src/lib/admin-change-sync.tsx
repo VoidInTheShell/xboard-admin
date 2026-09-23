@@ -1,6 +1,7 @@
 import * as React from "react"
 import { toast } from "sonner"
 import { useAdminApi } from "@/lib/auth"
+import { getOpenModalCount, subscribeModalActivity } from "@/lib/modal-activity"
 
 export type AdminChangeEvent = {
   version: number
@@ -28,7 +29,20 @@ type AdminChangeSyncValue = {
   lastSyncedAt: string | null
   lastEvent: AdminChangeEvent | null
   refreshToken: number
+  autoRefresh: boolean
+  setAutoRefresh: (next: boolean) => void
   refreshNow: () => Promise<void>
+}
+
+const AUTO_REFRESH_STORAGE_KEY = "xboard-admin-auto-refresh"
+const PAUSED_SYNC_TOAST_ID = "admin-change-sync-paused"
+
+function readStoredAutoRefresh(): boolean {
+  try {
+    return window.localStorage.getItem(AUTO_REFRESH_STORAGE_KEY) === "true"
+  } catch {
+    return false
+  }
 }
 
 const AdminChangeSyncContext = React.createContext<AdminChangeSyncValue | null>(null)
@@ -40,11 +54,15 @@ export function AdminChangeSyncProvider({ children }: { children: React.ReactNod
   const [lastSyncedAt, setLastSyncedAt] = React.useState<string | null>(null)
   const [lastEvent, setLastEvent] = React.useState<AdminChangeEvent | null>(null)
   const [refreshToken, setRefreshToken] = React.useState(0)
+  const [autoRefresh, setAutoRefreshState] = React.useState<boolean>(readStoredAutoRefresh)
   const versionRef = React.useRef(0)
   const baselineReady = React.useRef(false)
   const refreshTimer = React.useRef<number | null>(null)
+  const autoRefreshRef = React.useRef(autoRefresh)
+  const deferredEventRef = React.useRef<AdminChangeEvent | null | undefined>(undefined)
+  const pausedDirtyRef = React.useRef(false)
 
-  const schedulePageRefresh = React.useCallback((event?: AdminChangeEvent) => {
+  const triggerPageRefresh = React.useCallback((event?: AdminChangeEvent) => {
     if (refreshTimer.current !== null) return
     refreshTimer.current = window.setTimeout(() => {
       refreshTimer.current = null
@@ -52,6 +70,47 @@ export function AdminChangeSyncProvider({ children }: { children: React.ReactNod
       toast.success(event?.actor_type === "mcp" ? "Agent 修改已同步，当前页面已刷新。" : "后台数据已更新，当前页面已刷新。")
     }, 150)
   }, [])
+
+  const schedulePageRefresh = React.useCallback((event?: AdminChangeEvent) => {
+    if (!autoRefreshRef.current) {
+      pausedDirtyRef.current = true
+      toast.info("后台数据已更新，自动刷新已暂停。", { id: PAUSED_SYNC_TOAST_ID })
+      return
+    }
+    // Defer the remount while any modal dialog is open so in-progress edits are
+    // never interrupted; the refresh flushes as soon as all dialogs close.
+    if (getOpenModalCount() > 0) {
+      deferredEventRef.current = event ?? null
+      return
+    }
+    triggerPageRefresh(event)
+  }, [triggerPageRefresh])
+
+  const setAutoRefresh = React.useCallback((next: boolean) => {
+    autoRefreshRef.current = next
+    setAutoRefreshState(next)
+    try {
+      if (next) window.localStorage.setItem(AUTO_REFRESH_STORAGE_KEY, "true")
+      else window.localStorage.removeItem(AUTO_REFRESH_STORAGE_KEY)
+    } catch {
+      // Storage may be unavailable (private mode); the toggle still works for this session.
+    }
+    if (next && pausedDirtyRef.current) {
+      pausedDirtyRef.current = false
+      deferredEventRef.current = undefined
+      triggerPageRefresh()
+    }
+  }, [triggerPageRefresh])
+
+  React.useEffect(() => {
+    return subscribeModalActivity(() => {
+      if (getOpenModalCount() > 0) return
+      if (deferredEventRef.current === undefined) return
+      const event = deferredEventRef.current
+      deferredEventRef.current = undefined
+      triggerPageRefresh(event ?? undefined)
+    })
+  }, [triggerPageRefresh])
 
   const acceptEvent = React.useCallback((event: AdminChangeEvent) => {
     if (!Number.isInteger(event.version) || event.version <= versionRef.current) return
@@ -177,8 +236,10 @@ export function AdminChangeSyncProvider({ children }: { children: React.ReactNod
     lastSyncedAt,
     lastEvent,
     refreshToken,
+    autoRefresh,
+    setAutoRefresh,
     refreshNow: reconcile,
-  }), [lastEvent, lastSyncedAt, reconcile, refreshToken, status, version])
+  }), [autoRefresh, lastEvent, lastSyncedAt, reconcile, refreshToken, setAutoRefresh, status, version])
 
   return <AdminChangeSyncContext.Provider value={value}>{children}</AdminChangeSyncContext.Provider>
 }

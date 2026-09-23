@@ -356,7 +356,7 @@ export function McpSettingsPanel() {
             <StatusItem term="传输协议" value="Streamable HTTP" detail="现代协议 + 旧版握手兼容" />
             <StatusItem
               term="前端同步"
-              value={sync.status === "connected" ? "实时连接正常" : sync.status === "connecting" ? "正在建立连接" : "正在自动重连"}
+              value={sync.status === "connected" ? (sync.autoRefresh ? "实时同步已开启" : "实时连接正常，自动刷新已暂停") : sync.status === "connecting" ? "正在建立连接" : "正在自动重连"}
               detail={`短 SSE + 版本补偿${sync.version === null ? "" : ` · v${sync.version}`}`}
             />
             <StatusItem term="审计身份" value="独立 MCP Key" detail="工具、资源和请求可追踪" />

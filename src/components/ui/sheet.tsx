@@ -5,9 +5,19 @@ import { XIcon } from "lucide-react"
 import { Dialog as SheetPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
+import { acquireOpenModal } from "@/lib/modal-activity"
 
-function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
-  return <SheetPrimitive.Root data-slot="sheet" {...props} />
+function Sheet({
+  open,
+  defaultOpen,
+  ...props
+}: React.ComponentProps<typeof SheetPrimitive.Root>) {
+  const isOpen = open ?? defaultOpen ?? false
+  React.useEffect(() => {
+    if (!isOpen) return
+    return acquireOpenModal()
+  }, [isOpen])
+  return <SheetPrimitive.Root data-slot="sheet" open={open} defaultOpen={defaultOpen} {...props} />
 }
 
 function SheetTrigger({

@@ -5,12 +5,20 @@ import { XIcon } from "lucide-react"
 import { Dialog as DialogPrimitive } from "radix-ui"
 
 import { cn } from "@/lib/utils"
+import { acquireOpenModal } from "@/lib/modal-activity"
 import { Button } from "@/components/ui/button"
 
 function Dialog({
+  open,
+  defaultOpen,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Root>) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />
+  const isOpen = open ?? defaultOpen ?? false
+  React.useEffect(() => {
+    if (!isOpen) return
+    return acquireOpenModal()
+  }, [isOpen])
+  return <DialogPrimitive.Root data-slot="dialog" open={open} defaultOpen={defaultOpen} {...props} />
 }
 
 function DialogTrigger({

@@ -1,7 +1,8 @@
 import * as React from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
-import { ArrowUpCircle, Check, Command as CommandIcon, Languages, Moon, Search, Sun } from "lucide-react"
+import { ArrowUpCircle, Check, Command as CommandIcon, Languages, Moon, RefreshCw, Search, Sun } from "lucide-react"
 import { useTheme } from "next-themes"
+import { useAdminChangeSync } from "@/lib/admin-change-sync"
 import { flatNavigation } from "@/lib/navigation"
 import { Button } from "@/components/ui/button"
 import {
@@ -27,6 +28,7 @@ export function AdminTopbar() {
   const { pathname } = useLocation()
   const [searchOpen, setSearchOpen] = React.useState(false)
   const { resolvedTheme, setTheme } = useTheme()
+  const { autoRefresh, setAutoRefresh } = useAdminChangeSync()
   const items = flatNavigation()
   const updatesActive = pathname === "/updates" || pathname.endsWith("/updates")
 
@@ -62,6 +64,18 @@ export function AdminTopbar() {
         </Button>
 
         <div className="ml-auto flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="rounded-full aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:hover:bg-primary/90"
+            aria-pressed={autoRefresh}
+            aria-label={autoRefresh ? "暂停后台数据自动刷新" : "开启后台数据自动刷新"}
+            title={autoRefresh ? "自动同步已开启：后台数据变更会自动刷新当前页面，弹窗打开时会等关闭后再刷新。点击暂停。" : "自动同步已暂停：后台数据变更不会自动刷新页面。点击开启。"}
+            onClick={() => setAutoRefresh(!autoRefresh)}
+          >
+            <RefreshCw aria-hidden="true" />
+          </Button>
+
           <Button
             asChild
             variant={updatesActive ? "secondary" : "ghost"}
