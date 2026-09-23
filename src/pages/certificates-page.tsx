@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronDown, ChevronRight, KeyRound, Plus, RefreshCw, RotateCw, Search, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, KeyRound, LayoutGrid, Plus, RefreshCw, RotateCw, Search, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAdminApi } from '@/lib/auth'
 import { getErrorMessage, useAdminQuery } from '@/hooks/use-admin-query'
@@ -33,13 +33,17 @@ import {
   certificateStatusLabels,
   certificateStatusTone,
   previewCertificates,
+  previewPanelCertificates,
+  type CertificateScope,
   type ServerCertificate,
 } from '@/lib/control-plane/certificate-types'
 import type { Machine } from '@/lib/control-plane/runtime-api'
 
 const PAGE_SIZE = 10
+const PANEL_GROUP_LABEL = '面板'
 
 type CertificateRow = ServerCertificate & { machineName: string }
+type DialogTarget = { scope: CertificateScope; machineId: number } | null
 
 const statusOptions = [
   { value: 'all', label: '全部状态' },
@@ -59,7 +63,7 @@ export function CertificatesPage() {
   const [machineFilter, setMachineFilter] = React.useState('all')
   const [page, setPage] = React.useState(1)
   const [collapsed, setCollapsed] = React.useState<string | null>(null)
-  const [dialogMachine, setDialogMachine] = React.useState<number | null>(null)
+  const [dialogTarget, setDialogTarget] = React.useState<DialogTarget>(null)
   const [pickerOpen, setPickerOpen] = React.useState(false)
   const [editing, setEditing] = React.useState<CertificateRow | undefined>()
   const [renewing, setRenewing] = React.useState<string | null>(null)
@@ -74,23 +78,32 @@ export function CertificatesPage() {
       const machines = certificatePreviewEnabled
         ? previewMachines()
         : await api.get<Machine[]>('server/machine/fetch', undefined, signal)
-      const groups = await Promise.all(
-        machines.map(async (machine) => ({
+      const groups = await Promise.all([
+        ...machines.map(async (machine) => ({
           machine,
           certificates: certificatePreviewEnabled
             ? previewCertificates(machine.id)
             : await api.get<ServerCertificate[]>('server/certificate/fetch', { machine_id: machine.id }, signal),
         })),
-      )
-      return groups.flatMap((group) =>
-        group.certificates.map((certificate) => ({ ...certificate, machineName: group.machine.name })),
-      )
+      ])
+      const panelCertificates = certificatePreviewEnabled
+        ? previewPanelCertificates()
+        : await api.get<ServerCertificate[]>('server/certificate/fetch', { scope: 'panel' }, signal)
+      return [
+        ...panelCertificates.map((certificate) => ({ ...certificate, scope: 'panel' as CertificateScope, machineName: PANEL_GROUP_LABEL })),
+        ...groups.flatMap((group) =>
+          group.certificates.map((certificate) => ({ ...certificate, machineName: group.machine.name })),
+        ),
+      ]
     }, [api]),
   )
 
   const machines = React.useMemo(() => {
     const seen = new Map<string, string>()
-    for (const row of query.data ?? []) seen.set(String(row.machine_id), row.machineName)
+    for (const row of query.data ?? []) {
+      if (row.scope === 'panel') continue
+      seen.set(String(row.machine_id), row.machineName)
+    }
     return [...seen.entries()].map(([id, name]) => ({ value: id, label: name }))
   }, [query.data])
 
@@ -103,7 +116,9 @@ export function CertificatesPage() {
     const keyword = search.trim().toLowerCase()
     return allRows.filter((row) => {
       if (status !== 'all' && row.status !== status) return false
-      if (machineFilter !== 'all' && String(row.machine_id) !== machineFilter) return false
+      if (machineFilter === 'panel' && row.scope !== 'panel') return false
+      if (machineFilter !== 'all' && machineFilter !== 'panel' && row.scope === 'panel') return false
+      if (machineFilter !== 'all' && machineFilter !== 'panel' && String(row.machine_id) !== machineFilter) return false
       if (!keyword) return true
       return (
         row.name.toLowerCase().includes(keyword) ||
@@ -125,17 +140,23 @@ export function CertificatesPage() {
   const pageRows = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
 
   const groupedRows = React.useMemo(() => {
-    const groups = new Map<number, { machineName: string; rows: CertificateRow[] }>()
+    const groups = new Map<string, { key: string; machineId: number | null; machineName: string; scope: CertificateScope; rows: CertificateRow[] }>()
     for (const row of pageRows) {
-      const group = groups.get(row.machine_id) ?? { machineName: row.machineName, rows: [] }
+      const scope = (row.scope ?? 'machine') as CertificateScope
+      const key = scope === 'panel' ? 'panel' : `machine:${row.machine_id}`
+      const group = groups.get(key) ?? { key, machineId: scope === 'panel' ? null : row.machine_id, machineName: row.machineName, scope, rows: [] }
       group.rows.push(row)
-      groups.set(row.machine_id, group)
+      groups.set(key, group)
     }
-    return [...groups.entries()].map(([machineId, group]) => ({ machineId, ...group }))
+    return [...groups.values()].sort((a, b) => (a.scope === b.scope ? 0 : a.scope === 'panel' ? -1 : 1))
   }, [pageRows])
 
   function applyRows(rows: CertificateRow[]) {
     setLocalUpdates({ source: query.data, rows })
+  }
+
+  function scopePayload(row: CertificateRow) {
+    return row.scope === 'panel' ? { scope: 'panel' as const } : { machine_id: row.machine_id }
   }
 
   async function renew(row: CertificateRow) {
@@ -143,7 +164,7 @@ export function CertificatesPage() {
     try {
       const updated = await api.post<ServerCertificate>('server/certificate/renew', {
         id: row.id,
-        machine_id: row.machine_id,
+        ...scopePayload(row),
         expected_change_version: row.updated_at ?? row.id,
         confirmation: 'CONFIRM server.certificate.renew',
       })
@@ -161,7 +182,7 @@ export function CertificatesPage() {
     try {
       await api.post('server/certificate/drop', {
         id: row.id,
-        machine_id: row.machine_id,
+        ...scopePayload(row),
         expected_change_version: row.updated_at ?? row.id,
         confirmation: 'CONFIRM server.certificate.drop',
       })
@@ -179,14 +200,23 @@ export function CertificatesPage() {
         <RotateCw data-icon="inline-start" />
         {renewing === row.id ? '续签中…' : '续签'}
       </Button>
-      <Button variant="ghost" size="sm" onClick={() => { setEditing(row); setDialogMachine(row.machine_id) }}>编辑</Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => {
+          setEditing(row)
+          setDialogTarget({ scope: (row.scope ?? 'machine') as CertificateScope, machineId: row.machine_id ?? 0 })
+        }}
+      >
+        编辑
+      </Button>
       <Button variant="ghost" size="icon-sm" className="text-destructive hover:text-destructive" aria-label={`删除 ${row.name}`} onClick={() => setRemove(row)}>
         <Trash2 />
       </Button>
     </div>
   )
 
-  const rowCells = (row: CertificateRow, showMachine: boolean) => (
+  const rowCells = (row: CertificateRow, showMachine: boolean, stickyActions = false) => (
     <>
       <td className="px-4 py-4 sm:px-5">
         <div className="font-medium">{row.name}</div>
@@ -194,7 +224,11 @@ export function CertificatesPage() {
       </td>
       {showMachine ? (
         <td className="px-4 py-4">
-          <Link className="text-sm hover:underline focus-visible:outline-2 focus-visible:outline-ring" to={`/servers/${row.machine_id}/inbounds`}>{row.machineName}</Link>
+          {row.scope === 'panel' ? (
+            <Badge variant="secondary">{PANEL_GROUP_LABEL}</Badge>
+          ) : (
+            <Link className="text-sm hover:underline focus-visible:outline-2 focus-visible:outline-ring" to={`/servers/${row.machine_id}/inbounds`}>{row.machineName}</Link>
+          )}
         </td>
       ) : null}
       <td className="whitespace-nowrap px-4 py-4">{certificateSourceLabels[row.source_type]}</td>
@@ -205,9 +239,13 @@ export function CertificatesPage() {
       </td>
       <td className="px-4 py-4">
         <span className={row.status === 'expired' || row.status === 'expiring' ? 'font-medium text-destructive' : ''}>{certificateExpiryLabel(row.expires_at)}</span>
+      </td>      <td className="whitespace-nowrap px-4 py-4"><span className="font-data text-xs text-muted-foreground">{row.references.length} 个</span></td>
+      <td className={stickyActions
+        ? 'sticky right-0 z-10 bg-background px-4 py-4 shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.12)]'
+        : 'px-4 py-4'}
+      >
+        {rowActions(row)}
       </td>
-      <td className="whitespace-nowrap px-4 py-4"><span className="font-data text-xs text-muted-foreground">{row.references.length} 个</span></td>
-      <td className="px-4 py-4">{rowActions(row)}</td>
     </>
   )
 
@@ -215,14 +253,17 @@ export function CertificatesPage() {
     <>
       <PageHeader
         title="证书管理"
-        description="汇总所有服务器的证书资源，支持按服务器分组查看、检索与到期状态筛选。"
+        description="汇总面板与所有服务器的证书资源，支持按面板、服务器分组查看、检索与到期状态筛选。"
         action={
           <>
             <Button variant="outline" onClick={query.reload} disabled={query.loading || query.refreshing}><RefreshCw data-icon="inline-start" />刷新</Button>
             <Button onClick={() => {
-              if (machineFilter !== 'all') {
+              if (machineFilter === 'panel') {
                 setEditing(undefined)
-                setDialogMachine(Number(machineFilter))
+                setDialogTarget({ scope: 'panel', machineId: 0 })
+              } else if (machineFilter !== 'all') {
+                setEditing(undefined)
+                setDialogTarget({ scope: 'machine', machineId: Number(machineFilter) })
               } else {
                 setPickerOpen(true)
               }
@@ -237,7 +278,7 @@ export function CertificatesPage() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <CardTitle className="text-base">证书资源清单</CardTitle>
-              <CardDescription>路径证书只登记引用，删除资源不会删除宿主机文件。</CardDescription>
+              <CardDescription>面板证书由入口网关签发；路径证书只登记引用，删除资源不会删除宿主机文件。</CardDescription>
             </div>
             <ToggleGroup
               type="single"
@@ -246,7 +287,7 @@ export function CertificatesPage() {
               onValueChange={(next) => { if (next) setView(next as 'grouped' | 'flat') }}
               aria-label="切换列表视图"
             >
-              <ToggleGroupItem value="grouped">按服务器分组</ToggleGroupItem>
+              <ToggleGroupItem value="grouped">按归属分组</ToggleGroupItem>
               <ToggleGroupItem value="flat">平铺列表</ToggleGroupItem>
             </ToggleGroup>
           </div>
@@ -256,9 +297,10 @@ export function CertificatesPage() {
               <Input className="pl-8" placeholder="搜索名称、域名或服务器" value={search} onChange={(event) => setSearch(event.target.value)} aria-label="搜索证书" />
             </div>
             <Select value={machineFilter} onValueChange={setMachineFilter}>
-              <SelectTrigger className="w-44" aria-label="筛选服务器"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-44" aria-label="筛选归属"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">全部服务器</SelectItem>
+                <SelectItem value="all">全部归属</SelectItem>
+                <SelectItem value="panel">{PANEL_GROUP_LABEL}</SelectItem>
                 {machines.map((machine) => <SelectItem key={machine.value} value={machine.value}>{machine.label}</SelectItem>)}
               </SelectContent>
             </Select>
@@ -283,7 +325,7 @@ export function CertificatesPage() {
                 </span>
                 <EmptyTitle>没有匹配的证书</EmptyTitle>
                 <EmptyDescription>
-                  调整搜索或筛选条件；也可以进入具体服务器的工作台新增证书。
+                  调整搜索或筛选条件；也可以为面板或具体服务器新增证书。
                 </EmptyDescription>
               </EmptyHeader>
             </Empty>
@@ -291,22 +333,22 @@ export function CertificatesPage() {
             <div className="max-h-[32rem] overflow-y-auto">
               {view === 'flat' ? (
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[1080px] text-sm">
+                  <table className="w-full min-w-[960px] text-sm">
                     <thead className="sticky top-0 z-10 bg-muted/35 text-left text-xs text-muted-foreground backdrop-blur">
                       <tr>
                         <th className="px-4 py-3 font-medium sm:px-5">名称 / 域名</th>
-                        <th className="whitespace-nowrap px-4 py-3 font-medium">服务器</th>
+                        <th className="whitespace-nowrap px-4 py-3 font-medium">归属</th>
                         <th className="whitespace-nowrap px-4 py-3 font-medium">来源</th>
                         <th className="whitespace-nowrap px-4 py-3 font-medium">自动续签</th>
                         <th className="whitespace-nowrap px-4 py-3 font-medium">状态</th>
                         <th className="px-4 py-3 font-medium">到期时间</th>
                         <th className="whitespace-nowrap px-4 py-3 font-medium">引用</th>
-                        <th className="px-4 py-3 text-right font-medium">操作</th>
+                        <th className="sticky right-0 z-20 bg-muted/50 px-4 py-3 text-right font-medium backdrop-blur">操作</th>
                       </tr>
                     </thead>
                     <tbody>
                       {pageRows.map((row) => (
-                        <tr key={row.id} className="border-t align-top">{rowCells(row, true)}</tr>
+                        <tr key={row.id} className="border-t align-top">{rowCells(row, true, true)}</tr>
                       ))}
                     </tbody>
                   </table>
@@ -314,18 +356,20 @@ export function CertificatesPage() {
               ) : (
                 <div className="divide-y">
                   {groupedRows.map((group) => {
-                    const isCollapsed = collapsed === String(group.machineId)
+                    const isCollapsed = collapsed === group.key
+                    const isPanel = group.scope === 'panel'
                     return (
-                      <section key={group.machineId} aria-label={`${group.machineName} 的证书`}>
+                      <section key={group.key} aria-label={`${group.machineName} 的证书`}>
                         <div className="flex flex-wrap items-center gap-2 px-4 py-3 sm:px-5">
                           <Button
                             variant="ghost"
                             size="sm"
                             className="-ml-2 font-medium"
                             aria-expanded={!isCollapsed}
-                            onClick={() => setCollapsed(isCollapsed ? null : String(group.machineId))}
+                            onClick={() => setCollapsed(isCollapsed ? null : group.key)}
                           >
                             {isCollapsed ? <ChevronRight aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+                            {isPanel ? <LayoutGrid data-icon="inline-start" aria-hidden="true" /> : null}
                             {group.machineName}
                           </Button>
                           <Badge variant="outline">{group.rows.length} 份证书</Badge>
@@ -371,16 +415,24 @@ export function CertificatesPage() {
       <Dialog open={pickerOpen} onOpenChange={setPickerOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>选择要新增证书的服务器</DialogTitle>
-            <DialogDescription>证书资源归属于具体服务器，请先选择目标服务器。</DialogDescription>
+            <DialogTitle>选择证书归属</DialogTitle>
+            <DialogDescription>面板证书由入口网关自动签发；服务器证书归属于具体服务器。</DialogDescription>
           </DialogHeader>
           <div className="flex max-h-72 flex-col gap-2 overflow-y-auto">
+            <Button
+              variant="outline"
+              className="justify-start"
+              onClick={() => { setEditing(undefined); setDialogTarget({ scope: 'panel', machineId: 0 }); setPickerOpen(false) }}
+            >
+              <LayoutGrid data-icon="inline-start" aria-hidden="true" />
+              {PANEL_GROUP_LABEL}
+            </Button>
             {machines.map((machine) => (
               <Button
                 key={machine.value}
                 variant="outline"
                 className="justify-start"
-                onClick={() => { setEditing(undefined); setDialogMachine(Number(machine.value)); setPickerOpen(false) }}
+                onClick={() => { setEditing(undefined); setDialogTarget({ scope: 'machine', machineId: Number(machine.value) }); setPickerOpen(false) }}
               >
                 {machine.label}
               </Button>
@@ -390,15 +442,18 @@ export function CertificatesPage() {
         </DialogContent>
       </Dialog>
       <CertificateDialog
-        key={`${editing?.id ?? 'new'}:${dialogMachine ?? 'none'}`}
-        open={dialogMachine !== null}
-        onOpenChange={(open) => { if (!open) { setDialogMachine(null); setEditing(undefined) } }}
-        machineId={dialogMachine ?? 0}
+        key={`${editing?.id ?? 'new'}:${dialogTarget?.scope ?? 'none'}:${dialogTarget?.machineId ?? 'none'}`}
+        open={dialogTarget !== null}
+        onOpenChange={(open) => { if (!open) { setDialogTarget(null); setEditing(undefined) } }}
+        machineId={dialogTarget?.machineId ?? 0}
+        scope={dialogTarget?.scope ?? 'machine'}
         certificate={editing}
         onSaved={(certificate) => {
-          const machineName = editing?.machineName ?? machines.find((machine) => Number(machine.value) === dialogMachine)?.label ?? ''
+          const machineName = certificate.scope === 'panel'
+            ? PANEL_GROUP_LABEL
+            : editing?.machineName ?? machines.find((machine) => Number(machine.value) === dialogTarget?.machineId)?.label ?? ''
           applyRows([{ ...certificate, machineName }, ...allRows.filter((item) => item.id !== certificate.id)])
-          setDialogMachine(null)
+          setDialogTarget(null)
           setEditing(undefined)
           query.reload()
         }}
@@ -407,7 +462,11 @@ export function CertificatesPage() {
         open={Boolean(remove && !remove.references.length)}
         onOpenChange={(open) => !open && setRemove(null)}
         title={remove?.references.length ? '证书仍被引用' : `删除 ${remove?.name ?? '证书'}？`}
-        description={remove?.references.length ? '这份证书仍被配置引用，删除前请先解除引用。' : '删除只移除服务器证书资源，不会删除 path 来源指向的宿主机文件。'}
+        description={remove?.references.length
+          ? '这份证书仍被配置引用，删除前请先解除引用。'
+          : remove?.scope === 'panel'
+            ? '删除只移除面板证书资源，入口网关会在下次同步时停止使用该证书。'
+            : '删除只移除服务器证书资源，不会删除 path 来源指向的宿主机文件。'}
         destructive={!remove?.references.length}
         busy={false}
         onConfirm={async () => { if (remove) await drop(remove) }}

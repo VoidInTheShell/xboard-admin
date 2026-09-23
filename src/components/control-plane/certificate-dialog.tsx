@@ -5,9 +5,10 @@ import { useAdminApi } from '@/lib/auth'
 import { getErrorMessage } from '@/hooks/use-admin-query'
 import {
   certificatePreviewEnabled,
-  certificateSourceLabels,
+  type CertificateScope,
   type CertificateSourceType,
   type ServerCertificate,
+  sourceOptionsFor,
 } from '@/lib/control-plane/certificate-types'
 import { Button } from '@/components/ui/button'
 import {
@@ -43,10 +44,10 @@ type CertificateDraft = {
   private_key_content: string
 }
 
-const sourceTypes = Object.entries(certificateSourceLabels) as [
-  CertificateSourceType,
-  string,
-][]
+const sourceTypesByScope = {
+  machine: sourceOptionsFor('machine'),
+  panel: sourceOptionsFor('panel'),
+} as const
 
 function emptyDraft(certificate?: ServerCertificate): CertificateDraft {
   return {
@@ -69,15 +70,19 @@ export function CertificateDialog({
   onOpenChange,
   machineId,
   certificate,
+  scope = 'machine',
   onSaved,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   machineId: number
   certificate?: ServerCertificate
+  scope?: CertificateScope
   onSaved: (certificate: ServerCertificate) => void
 }) {
   const api = useAdminApi()
+  const isPanel = scope === 'panel'
+  const sourceTypes = sourceTypesByScope[scope]
   const draftIdentity = `${certificate?.id ?? 'new'}:${open ? 'open' : 'closed'}`
   const [draftState, setDraftState] = React.useState<{
     identity: string
@@ -106,8 +111,8 @@ export function CertificateDialog({
     try {
       if (!certificatePreviewEnabled) {
         await api.post('server/certificate/validate', {
+          ...(isPanel ? { scope: 'panel' } : { machine_id: machineId }),
           id: certificate?.id,
-          machine_id: machineId,
           name: draft.name.trim(),
           source_type: draft.source_type,
           domains,
@@ -149,7 +154,7 @@ export function CertificateDialog({
     try {
       const payload = {
         ...(certificate ? { id: certificate.id } : {}),
-        machine_id: machineId,
+        ...(isPanel ? { scope: 'panel' } : { machine_id: machineId }),
         name: draft.name.trim(),
         source_type: draft.source_type,
         domains,
@@ -163,7 +168,7 @@ export function CertificateDialog({
         private_key_content: draft.private_key_content || undefined,
       }
       const saved = certificatePreviewEnabled
-        ? previewSavedCertificate(machineId, certificate, payload)
+        ? previewSavedCertificate(machineId, certificate, payload, scope)
         : await api.post<ServerCertificate>('server/certificate/save', payload)
       onSaved(saved)
       toast.success(certificate ? '证书资源已保存' : '证书资源已创建')
@@ -180,9 +185,11 @@ export function CertificateDialog({
     <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{certificate ? '编辑服务器证书' : '新增服务器证书'}</DialogTitle>
+          <DialogTitle>{certificate ? (isPanel ? '编辑面板证书' : '编辑服务器证书') : isPanel ? '新增面板证书' : '新增服务器证书'}</DialogTitle>
           <DialogDescription>
-            证书属于当前服务器，保存后可被多个运行实例和发布端点引用。密钥与 DNS 凭据不会回显。
+            {isPanel
+              ? '面板证书由入口网关自动签发与续期，保存后由面板更新器应用到入口配置。密钥与凭据不会回显。'
+              : '证书属于当前服务器，保存后可被多个运行实例和发布端点引用。密钥与 DNS 凭据不会回显。'}
           </DialogDescription>
         </DialogHeader>
         <FieldGroup className="grid gap-4 sm:grid-cols-2">
@@ -207,8 +214,7 @@ export function CertificateDialog({
               <FieldLabel htmlFor="certificate-email">ACME 联系邮箱</FieldLabel>
               <Input id="certificate-email" type="email" value={draft.email} onChange={(event) => update('email', event.target.value)} />
             </Field>
-          )}
-          {source === 'acme_dns' && (
+          )}          {source === 'acme_dns' && (
             <>
               <Field>
                 <FieldLabel htmlFor="certificate-dns-provider">DNS 提供商</FieldLabel>
@@ -254,7 +260,7 @@ export function CertificateDialog({
           <Field orientation="horizontal" className="justify-between rounded-2xl border p-4 sm:col-span-2">
             <div>
               <FieldLabel htmlFor="certificate-auto-renew">自动续签</FieldLabel>
-              <FieldDescription>关闭后不启动长期续签，但仍可手动续签。</FieldDescription>
+              <FieldDescription>{isPanel ? '关闭后仍可手动重新签发，但不会再自动续期。' : '关闭后不启动长期续签，但仍可手动续签。'}</FieldDescription>
             </div>
             <Switch id="certificate-auto-renew" checked={draft.auto_renew} onCheckedChange={(checked) => update('auto_renew', checked)} />
           </Field>
@@ -288,11 +294,13 @@ function previewSavedCertificate(
   machineId: number,
   previous: ServerCertificate | undefined,
   payload: PreviewSavePayload,
+  scope: CertificateScope = 'machine',
 ): ServerCertificate {
   const now = new Date().toISOString()
   return {
-    id: previous?.id ?? `cert_preview_${machineId}_${Date.now()}`,
-    machine_id: machineId,
+    id: previous?.id ?? `cert_preview_${scope}_${machineId}_${Date.now()}`,
+    scope,
+    machine_id: scope === 'panel' ? null : machineId,
     name: payload.name,
     source_type: payload.source_type,
     domains: payload.domains,

@@ -22,9 +22,12 @@ export type CertificateReference = {
   usage: 'server' | 'client' | 'issuance'
 }
 
+export type CertificateScope = 'machine' | 'panel'
+
 export type ServerCertificate = {
   id: string
-  machine_id: number
+  scope?: CertificateScope
+  machine_id: number | null
   name: string
   source_type: CertificateSourceType
   domains: string[]
@@ -61,6 +64,14 @@ export const certificateSourceLabels: Record<CertificateSourceType, string> = {
   path: '证书路径',
   content: 'PEM 内容',
   self_signed: '自签名',
+}
+
+/** 面板作用域仅支持 caddy/updater 可以直接处理的来源。 */
+export const panelSourceTypes: CertificateSourceType[] = ['acme_http', 'path', 'content']
+
+export function sourceOptionsFor(scope: CertificateScope): [CertificateSourceType, string][] {
+  const entries = Object.entries(certificateSourceLabels) as [CertificateSourceType, string][]
+  return scope === 'panel' ? entries.filter(([value]) => panelSourceTypes.includes(value)) : entries
 }
 
 export const certificateStatusLabels: Record<CertificateStatus, string> = {
@@ -119,6 +130,55 @@ export function selectableCertificates(certificates: ServerCertificate[]) {
   return certificates.filter((certificate) =>
     ['valid', 'pending', 'issuing', 'expiring'].includes(certificate.status),
   )
+}
+
+export function previewPanelCertificates(): ServerCertificate[] {
+  return [
+    {
+      id: 'cert_preview_panel_entry',
+      scope: 'panel',
+      machine_id: null,
+      name: '面板入口证书',
+      source_type: 'acme_http',
+      domains: ['panel.example.test'],
+      auto_renew: true,
+      email: 'ops@example.test',
+      dns_provider: null,
+      dns_configured: false,
+      certificate_path: null,
+      private_key_path: null,
+      status: 'valid',
+      not_before_at: '2026-08-20T00:00:00Z',
+      expires_at: '2026-11-18T00:00:00Z',
+      fingerprint: 'SHA256:PANEL:MOCK',
+      last_renewed_at: '2026-08-20T00:04:00Z',
+      next_renewal_at: '2026-10-19T00:00:00Z',
+      last_error: null,
+      references: [],
+    },
+    {
+      id: 'cert_preview_panel_path',
+      scope: 'panel',
+      machine_id: null,
+      name: '既有证书挂载',
+      source_type: 'path',
+      domains: ['legacy.example.test'],
+      auto_renew: false,
+      email: null,
+      dns_provider: null,
+      dns_configured: false,
+      certificate_path: '/etc/ssl/panel/fullchain.pem',
+      private_key_path: '/etc/ssl/panel/privkey.pem',
+      status: 'expiring',
+      not_before_at: '2026-01-10T00:00:00Z',
+      expires_at: '2026-10-03T00:00:00Z',
+      fingerprint: 'SHA256:PATH:MOCK',
+      last_renewed_at: null,
+      next_renewal_at: null,
+      last_error: null,
+      references: [],
+    },
+  ]
 }
 
 export function previewCertificates(machineId: number): ServerCertificate[] {
