@@ -1,8 +1,19 @@
+import { flatNavigation } from '@/lib/navigation'
+
 const fallbackAdminPath = normalizeAdminPath(import.meta.env.VITE_ADMIN_API_PATH) ?? "unitedearthgov"
 const adminPathPattern = /^[A-Za-z0-9_-]{8,}$/
 
+// The SPA's own first-level route segments (e.g. "dashboard", "settings",
+// "certificates") must never be mistaken for a standalone admin entry path,
+// otherwise deep links like /settings would be treated as the router base.
+const knownRouteSegments = new Set(
+  flatNavigation()
+    .map((item) => item.path.replace(/^\/+/, '').split('/')[0])
+    .filter(Boolean),
+)
+
 export function isAdminEntryPath(value: string): boolean {
-  return adminPathPattern.test(value) && value !== "passport"
+  return adminPathPattern.test(value) && value !== "passport" && !knownRouteSegments.has(value)
 }
 
 export function activeAdminPath(pathname = browserPathname()): string {
