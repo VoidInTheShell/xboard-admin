@@ -1,6 +1,7 @@
 import * as React from "react"
 import { toast } from "sonner"
 import { useAdminApi } from "@/lib/auth"
+import { refreshSiteBranding } from "@/lib/site-branding"
 import { getOpenModalCount, subscribeModalActivity } from "@/lib/modal-activity"
 
 export type AdminChangeEvent = {
@@ -72,6 +73,10 @@ export function AdminChangeSyncProvider({ children }: { children: React.ReactNod
   }, [])
 
   const schedulePageRefresh = React.useCallback((event?: AdminChangeEvent) => {
+    // Branding metadata (site name/logo/favicon) follows every accepted change
+    // immediately - even while page refresh is paused - because updating the
+    // store and favicon never remounts anything or interrupts open dialogs.
+    void refreshSiteBranding()
     if (!autoRefreshRef.current) {
       pausedDirtyRef.current = true
       toast.info("后台数据已更新，自动刷新已暂停。", { id: PAUSED_SYNC_TOAST_ID })
