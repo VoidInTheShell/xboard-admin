@@ -502,7 +502,9 @@ func (a *Agent) clearCaddyCertCache(ctx context.Context, entry PanelEntryConfig,
 	var script strings.Builder
 	script.WriteString("found=0; ")
 	for _, domain := range domains {
-		fmt.Fprintf(&script, "for p in %q/caddy/certificates/*/%q %q/caddy/certificates/*/%q; do if [ -e \"$p\" ]; then found=1; rm -rf \"$p\"; fi; done; ", entry.CaddyInternalDataPath, domain, entry.CaddyInternalDataPath, caddyStorageDomain(domain))
+		// Keep the wildcard segment unquoted so the shell expands Caddy's
+		// CA-directory level; domain values are validated and shell-quoted.
+		fmt.Fprintf(&script, "for p in %s/caddy/certificates/*/%s %s/caddy/certificates/*/%s; do if [ -e \"$p\" ]; then found=1; rm -rf \"$p\"; fi; done; ", shellQuote(entry.CaddyInternalDataPath), shellQuote(domain), shellQuote(entry.CaddyInternalDataPath), shellQuote(caddyStorageDomain(domain)))
 	}
 	script.WriteString("printf '%s' \"$found\"")
 	args = append(args, script.String())
@@ -511,6 +513,10 @@ func (a *Agent) clearCaddyCertCache(ctx context.Context, entry PanelEntryConfig,
 		return false, err
 	}
 	return strings.TrimSpace(out) == "1", nil
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }
 
 // caddyStorageDomain mirrors Caddy's storage-key encoding for wildcards so
