@@ -1,6 +1,7 @@
 package updater
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -300,4 +301,93 @@ func testPEMPair(t *testing.T, domain string) (string, string) {
 	}
 	keyPEM := string(pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}))
 	return certPEM, keyPEM
+}
+
+func TestNeedsSeedRender(t *testing.T) {
+	if !needsSeedRender(nil, os.ErrNotExist) {
+		t.Fatal("missing file must need the seed render")
+	}
+	if !needsSeedRender(nil, nil) {
+		t.Fatal("empty file must need the seed render")
+	}
+	// The installer placeholder.
+	if !needsSeedRender([]byte("{\n\tadmin :2019\n}\n"), nil) {
+		t.Fatal("installer placeholder must need the seed render")
+	}
+	// An updater-rendered file must be kept.
+	rendered, _ := renderPanelCaddyfile(PanelEntryConfig{
+		CaddyContainer: "xboard-entry",
+		ThemeUpstream:  "http://xboard-theme",
+		SeedDomains:    []string{"panel.example.test"},
+	}, nil, nil)
+	if needsSeedRender([]byte(rendered), nil) {
+		t.Fatal("managed Caddyfile must be kept as-is")
+	}
+	if !strings.Contains(rendered, "panel.example.test") {
+		t.Fatal("seed-only render must contain the seed domain")
+	}
+	if !strings.Contains(rendered, "admin localhost:2019") {
+		t.Fatal("seed-only render must keep the admin endpoint local")
+	}
+}
+
+func TestSeedColdStartKeepsManagedFile(t *testing.T) {
+	dir := t.TempDir()
+	caddyfile := filepath.Join(dir, "Caddyfile")
+	rendered := "# Managed by xboard-updater; do not edit.\npanel.example.test {\n\treverse_proxy http://xboard-theme\n}\n"
+	if err := os.WriteFile(caddyfile, []byte(rendered), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	entry := PanelEntryConfig{
+		CaddyfilePath:   caddyfile,
+		CaddyContainer:  "xboard-entry",
+		CaddyConfigPath: "/etc/caddy/Caddyfile",
+		ThemeUpstream:   "http://xboard-theme",
+		SeedDomains:     []string{"panel.example.test"},
+	}
+	agent := &Agent{Execute: func(context.Context, string, ...string) ([]byte, error) {
+		t.Fatal("no command may run when the Caddyfile is already managed")
+		return nil, nil
+	}}
+	if err := agent.seedColdStart(context.Background(), entry); err != nil {
+		t.Fatalf("seedColdStart must be a no-op: %v", err)
+	}
+	after, err := os.ReadFile(caddyfile)
+	if err != nil || string(after) != rendered {
+		t.Fatal("managed Caddyfile must stay untouched")
+	}
+}
+
+func TestSeedColdStartRendersPlaceholder(t *testing.T) {
+	dir := t.TempDir()
+	caddyfile := filepath.Join(dir, "Caddyfile")
+	if err := os.WriteFile(caddyfile, []byte("{\n\tadmin :2019\n}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	entry := PanelEntryConfig{
+		CaddyfilePath:   caddyfile,
+		CaddyContainer:  "xboard-entry",
+		CaddyConfigPath: "/etc/caddy/Caddyfile",
+		ThemeUpstream:   "http://xboard-theme",
+		SeedDomains:     []string{"panel.example.test"},
+	}
+	agent := &Agent{Execute: func(_ context.Context, name string, args ...string) ([]byte, error) {
+		if name != "docker" || len(args) < 4 || args[0] != "exec" || args[1] != "xboard-entry" || args[2] != "caddy" || args[3] != "reload" {
+			t.Fatalf("unexpected command: %s %v", name, args)
+		}
+		return nil, nil
+	}}
+	if err := agent.seedColdStart(context.Background(), entry); err != nil {
+		t.Fatalf("seedColdStart failed: %v", err)
+	}
+	after, err := os.ReadFile(caddyfile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(after), "# Managed by xboard-updater") {
+		t.Fatal("placeholder must be replaced with the managed render")
+	}
+	if !strings.Contains(string(after), "panel.example.test") {
+		t.Fatal("seed render must serve the seed domain")
+	}
 }

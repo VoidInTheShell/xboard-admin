@@ -86,6 +86,9 @@ func (a *Agent) reconcilePanelEntry(ctx context.Context) error {
 	if err := a.apiGet(ctx, "panel-certificates", &desired); err != nil {
 		// A panel that predates the panel-certificate endpoints keeps the
 		// entry running on the last rendered Caddyfile; retry next round.
+		if seedErr := a.seedColdStart(ctx, entry); seedErr != nil {
+			fmt.Fprintln(os.Stderr, "xboard-updater: panel entry: seed cold start:", seedErr)
+		}
 		return fmt.Errorf("desired panel certificates unavailable: %w", err)
 	}
 	certs := sanitizePanelCertificates(desired.Certificates)
@@ -399,6 +402,49 @@ func renderPanelCaddyfile(entry PanelEntryConfig, certs []panelCertificate, mate
 
 func renderPlaceholderCaddyfile() string {
 	return "{\n\tadmin localhost:2019\n}\n"
+}
+
+// needsSeedRender reports whether the on-disk entry Caddyfile was not
+// rendered by the updater: the installer placeholder (or a missing/empty
+// file) must be replaced before the first certificate resource can even be
+// fetched, because on a fresh install the update API is only reachable
+// through this entry.
+func needsSeedRender(current []byte, readErr error) bool {
+	if readErr != nil {
+		return true
+	}
+	content := string(current)
+	if strings.TrimSpace(content) == "" {
+		return true
+	}
+	return !strings.HasPrefix(content, "# Managed by xboard-updater")
+}
+
+// seedColdStart replaces a not-yet-managed entry Caddyfile with the
+// seed-only render so the entry can obtain its first certificate via ACME
+// and the panel API becomes reachable over HTTPS. A Caddyfile that was
+// already rendered by a previous reconcile is left untouched: the entry
+// keeps serving the last known configuration while the panel is
+// temporarily unreachable.
+func (a *Agent) seedColdStart(ctx context.Context, entry PanelEntryConfig) error {
+	current, readErr := os.ReadFile(entry.CaddyfilePath)
+	if !needsSeedRender(current, readErr) {
+		return nil
+	}
+	if readErr != nil && !os.IsNotExist(readErr) {
+		return fmt.Errorf("entry Caddyfile unreadable: %w", readErr)
+	}
+	rendered, _ := renderPanelCaddyfile(entry, nil, nil)
+	if readErr == nil && string(current) == rendered {
+		return nil
+	}
+	if err := atomicWriteFile(entry.CaddyfilePath, []byte(rendered), 0o644); err != nil {
+		return fmt.Errorf("entry Caddyfile write failed: %w", err)
+	}
+	if _, err := a.exec(ctx, "docker", "exec", entry.CaddyContainer, "caddy", "reload", "--config", entry.CaddyConfigPath); err != nil {
+		return fmt.Errorf("entry reload failed: %w", err)
+	}
+	return nil
 }
 // acmeRenewals returns domains of ACME certificates whose revision increased
 // since the last applied state while already being valid: the cached
