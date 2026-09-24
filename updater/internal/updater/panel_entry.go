@@ -27,17 +27,17 @@ import (
 const panelEntryInterval = time.Minute
 
 type panelCertificate struct {
-	ID                  string   `json:"id"`
-	Domains             []string `json:"domains"`
-	SourceType          string   `json:"source_type"`
-	AutoRenew           bool     `json:"auto_renew"`
-	Email               string   `json:"email"`
-	Revision            int      `json:"revision"`
-	Status              string   `json:"status"`
-	CertificatePath     string   `json:"certificate_path,omitempty"`
-	PrivateKeyPath      string   `json:"private_key_path,omitempty"`
-	CertificateContent  string   `json:"certificate_content,omitempty"`
-	PrivateKeyContent   string   `json:"private_key_content,omitempty"`
+	ID                 string   `json:"id"`
+	Domains            []string `json:"domains"`
+	SourceType         string   `json:"source_type"`
+	AutoRenew          bool     `json:"auto_renew"`
+	Email              string   `json:"email"`
+	Revision           int      `json:"revision"`
+	Status             string   `json:"status"`
+	CertificatePath    string   `json:"certificate_path,omitempty"`
+	PrivateKeyPath     string   `json:"private_key_path,omitempty"`
+	CertificateContent string   `json:"certificate_content,omitempty"`
+	PrivateKeyContent  string   `json:"private_key_content,omitempty"`
 }
 
 type panelCertReport struct {
@@ -125,12 +125,16 @@ func (a *Agent) reconcilePanelEntry(ctx context.Context) error {
 
 	// A revision bump on a previously valid ACME certificate means the panel
 	// asked for a re-issue (for example after a domain change): clear Caddy's
-	// cached certificate for those domains and reload so it obtains new ones.
+	// cached certificate and restart the entry so a config-unchanged reload
+	// cannot leave the old in-memory certificate active.
 	if renewed := acmeRenewals(certs, state); len(renewed) > 0 {
-		if err := a.clearCaddyCertCache(ctx, entry, renewed); err != nil {
+		cleared, err := a.clearCaddyCertCache(ctx, entry, renewed)
+		if err != nil {
 			fmt.Fprintln(os.Stderr, "xboard-updater: panel entry: clear ACME cache:", err)
-		} else if _, err := a.exec(ctx, "docker", "exec", entry.CaddyContainer, "caddy", "reload", "--config", entry.CaddyConfigPath); err != nil {
-			fmt.Fprintln(os.Stderr, "xboard-updater: panel entry: reload after renewal:", err)
+		} else if cleared {
+			if _, err := a.exec(ctx, "docker", "restart", entry.CaddyContainer); err != nil {
+				fmt.Fprintln(os.Stderr, "xboard-updater: panel entry: restart after renewal:", err)
+			}
 		}
 	}
 
@@ -471,6 +475,7 @@ func writeCaddyfileInPlace(path string, data []byte) error {
 	}
 	return f.Close()
 }
+
 // acmeRenewals returns domains of ACME certificates whose revision increased
 // since the last applied state while already being valid: the cached
 // certificate no longer matches the desired resource and must be re-issued.
@@ -489,19 +494,23 @@ func acmeRenewals(certs []panelCertificate, state panelEntryState) []string {
 	return domains
 }
 
-func (a *Agent) clearCaddyCertCache(ctx context.Context, entry PanelEntryConfig, domains []string) error {
+func (a *Agent) clearCaddyCertCache(ctx context.Context, entry PanelEntryConfig, domains []string) (bool, error) {
 	if len(domains) == 0 {
-		return nil
+		return false, nil
 	}
 	args := []string{"exec", entry.CaddyContainer, "sh", "-c"}
 	var script strings.Builder
-	fmt.Fprintf(&script, "rm -rf")
+	script.WriteString("found=0; ")
 	for _, domain := range domains {
-		fmt.Fprintf(&script, " %q/caddy/certificates/*/%q %q/caddy/certificates/*/%q", entry.CaddyInternalDataPath, domain, entry.CaddyInternalDataPath, caddyStorageDomain(domain))
+		fmt.Fprintf(&script, "for p in %q/caddy/certificates/*/%q %q/caddy/certificates/*/%q; do if [ -e \"$p\" ]; then found=1; rm -rf \"$p\"; fi; done; ", entry.CaddyInternalDataPath, domain, entry.CaddyInternalDataPath, caddyStorageDomain(domain))
 	}
+	script.WriteString("printf '%s' \"$found\"")
 	args = append(args, script.String())
-	_, err := a.exec(ctx, "docker", args...)
-	return err
+	out, err := a.exec(ctx, "docker", args...)
+	if err != nil {
+		return false, err
+	}
+	return strings.TrimSpace(out) == "1", nil
 }
 
 // caddyStorageDomain mirrors Caddy's storage-key encoding for wildcards so
@@ -645,6 +654,7 @@ func truncateLastError(text string) string {
 	}
 	return text[:1000]
 }
+
 // atomicWriteFile mirrors atomicJSON's tmp+rename pattern for plain files.
 // Only for files NOT bind-mounted into other containers: a rename swaps the
 // inode and single-file bind mounts keep following the old one.

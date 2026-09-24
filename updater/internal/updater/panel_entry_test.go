@@ -262,6 +262,28 @@ func TestPanelReportsEqual(t *testing.T) {
 	}
 }
 
+func TestClearCaddyCertCacheReportsDeletion(t *testing.T) {
+	calls := 0
+	agent := &Agent{Execute: func(_ context.Context, name string, args ...string) ([]byte, error) {
+		calls++
+		if name != "docker" || len(args) != 5 || args[0] != "exec" || args[1] != "xboard-entry" || args[2] != "sh" || args[3] != "-c" || args[4] == "" {
+			t.Fatalf("unexpected docker command: %s %v", name, args)
+		}
+		return []byte("1\n"), nil
+	}}
+	entry := PanelEntryConfig{CaddyContainer: "xboard-entry", CaddyInternalDataPath: "/data"}
+	cleared, err := agent.clearCaddyCertCache(context.Background(), entry, []string{"panel.example.test"})
+	if err != nil || !cleared || calls != 1 {
+		t.Fatalf("expected deleted cache, cleared=%v calls=%d err=%v", cleared, calls, err)
+	}
+
+	agent.Execute = func(context.Context, string, ...string) ([]byte, error) { return []byte("0"), nil }
+	cleared, err = agent.clearCaddyCertCache(context.Background(), entry, []string{"panel.example.test"})
+	if err != nil || cleared {
+		t.Fatalf("missing cache must not request a restart, cleared=%v err=%v", cleared, err)
+	}
+}
+
 func TestCaddyStorageDomain(t *testing.T) {
 	// Caddy encodes the wildcard label as a fixed prefix.
 	if got := caddyStorageDomain("*.example.test"); got != "wildcard_..example.test" && got != "wildcard_*.example.test" {
