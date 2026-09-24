@@ -132,8 +132,16 @@ func (a *Agent) reconcilePanelEntry(ctx context.Context) error {
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "xboard-updater: panel entry: clear ACME cache:", err)
 		} else if cleared {
+			// Persist the issuing marker before restarting. If the panel API is
+			// briefly unavailable during the Caddy restart, the next reconcile
+			// must not clear the cache and restart the entry again.
 			if _, err := a.exec(ctx, "docker", "restart", entry.CaddyContainer); err != nil {
 				fmt.Fprintln(os.Stderr, "xboard-updater: panel entry: restart after renewal:", err)
+			} else {
+				markRenewalsIssuing(state, certs)
+				if err := savePanelEntryState(a.Config.StateDir, state); err != nil {
+					return fmt.Errorf("renewal state save failed: %w", err)
+				}
 			}
 		}
 	}
@@ -476,9 +484,27 @@ func writeCaddyfileInPlace(path string, data []byte) error {
 	return f.Close()
 }
 
-// acmeRenewals returns domains of ACME certificates whose revision increased
-// since the last applied state while already being valid: the cached
-// certificate no longer matches the desired resource and must be re-issued.
+// markRenewalsIssuing records that cache deletion and the entry restart have
+// already been initiated for the requested revision. This prevents a
+// temporary panel API outage from causing a restart loop.
+func markRenewalsIssuing(state panelEntryState, certs []panelCertificate) {
+	if state.Certificates == nil {
+		state.Certificates = map[string]panelCertReport{}
+	}
+	for _, cert := range certs {
+		previous, ok := state.Certificates[cert.ID]
+		if !ok || previous.Status != "valid" || previous.AppliedRevision >= cert.Revision {
+			continue
+		}
+		previous.Status = "issuing"
+		previous.AppliedRevision = cert.Revision
+		state.Certificates[cert.ID] = previous
+	}
+}
+
+// acmeRenewals returns domains whose revision increased after a previously
+// valid report. An issuing marker suppresses duplicate cache deletion and
+// entry restarts until the new certificate is observed.
 func acmeRenewals(certs []panelCertificate, state panelEntryState) []string {
 	var domains []string
 	for _, cert := range certs {

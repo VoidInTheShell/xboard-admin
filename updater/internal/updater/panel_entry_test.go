@@ -188,6 +188,20 @@ func TestMaterializeContentCerts(t *testing.T) {
 	}
 }
 
+func TestMarkRenewalsIssuingSuppressesRepeatRenewal(t *testing.T) {
+	state := panelEntryState{Certificates: map[string]panelCertReport{
+		"renew": {ID: "renew", Status: "valid", AppliedRevision: 2},
+	}}
+	certs := []panelCertificate{{ID: "renew", Domains: []string{"panel.example.test"}, SourceType: "acme_http", Revision: 3}}
+	markRenewalsIssuing(state, certs)
+	if state.Certificates["renew"].Status != "issuing" || state.Certificates["renew"].AppliedRevision != 3 {
+		t.Fatalf("renewal marker not persisted in memory: %+v", state.Certificates["renew"])
+	}
+	if renewed := acmeRenewals(certs, state); len(renewed) != 0 {
+		t.Fatalf("issuing marker must suppress duplicate renewal: %v", renewed)
+	}
+}
+
 func TestAcmeRenewals(t *testing.T) {
 	certs := []panelCertificate{
 		{ID: "renew", Domains: []string{"panel.example.test", "*.panel.example.test"}, SourceType: "acme_http", Revision: 3},
