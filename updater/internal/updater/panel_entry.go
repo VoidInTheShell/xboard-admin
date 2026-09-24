@@ -110,14 +110,14 @@ func (a *Agent) reconcilePanelEntry(ctx context.Context) error {
 		if readErr != nil && !os.IsNotExist(readErr) {
 			return fmt.Errorf("entry Caddyfile unreadable: %w", readErr)
 		}
-		if err := atomicWriteFile(entry.CaddyfilePath, []byte(rendered), 0o644); err != nil {
+		if err := writeCaddyfileInPlace(entry.CaddyfilePath, []byte(rendered)); err != nil {
 			return fmt.Errorf("entry Caddyfile write failed: %w", err)
 		}
 		if _, err := a.exec(ctx, "docker", "exec", entry.CaddyContainer, "caddy", "reload", "--config", entry.CaddyConfigPath); err != nil {
 			// Reload keeps the running config on failure, but the file on disk
 			// is now invalid for a manual restart; restore the previous one.
 			if readErr == nil {
-				_ = atomicWriteFile(entry.CaddyfilePath, current, 0o644)
+				_ = writeCaddyfileInPlace(entry.CaddyfilePath, current)
 			}
 			return a.reportPanelCertificates(ctx, certs, state, conflicts, materialErr, fmt.Errorf("entry reload failed: %w", err))
 		}
@@ -438,13 +438,38 @@ func (a *Agent) seedColdStart(ctx context.Context, entry PanelEntryConfig) error
 	if readErr == nil && string(current) == rendered {
 		return nil
 	}
-	if err := atomicWriteFile(entry.CaddyfilePath, []byte(rendered), 0o644); err != nil {
+	if err := writeCaddyfileInPlace(entry.CaddyfilePath, []byte(rendered)); err != nil {
 		return fmt.Errorf("entry Caddyfile write failed: %w", err)
 	}
 	if _, err := a.exec(ctx, "docker", "exec", entry.CaddyContainer, "caddy", "reload", "--config", entry.CaddyConfigPath); err != nil {
 		return fmt.Errorf("entry reload failed: %w", err)
 	}
 	return nil
+}
+
+// writeCaddyfileInPlace overwrites the entry Caddyfile without renaming it:
+// the entry overlay may bind-mount this single file into the Caddy
+// container, and a rename would leave the container pinned to the old
+// inode forever. The reconcile loop retries every round, and Caddy only
+// re-reads the file on the reload that follows the write, so the truncated
+// window cannot reach the running configuration.
+func writeCaddyfileInPlace(path string, data []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
 }
 // acmeRenewals returns domains of ACME certificates whose revision increased
 // since the last applied state while already being valid: the cached
@@ -621,6 +646,8 @@ func truncateLastError(text string) string {
 	return text[:1000]
 }
 // atomicWriteFile mirrors atomicJSON's tmp+rename pattern for plain files.
+// Only for files NOT bind-mounted into other containers: a rename swaps the
+// inode and single-file bind mounts keep following the old one.
 func atomicWriteFile(path string, data []byte, mode os.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
