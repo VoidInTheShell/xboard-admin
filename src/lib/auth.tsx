@@ -21,6 +21,13 @@ type AuthContextValue = {
 }
 
 const sessionStorageKey = "xboard-admin-session-v1"
+const localPreviewAuthEnabled =
+  import.meta.env.DEV && import.meta.env.VITE_LOCAL_PREVIEW_AUTH === "true"
+const localPreviewSession: AdminSession = {
+  authData: "local-preview",
+  email: "beihai3body@uegov.org",
+  isAdmin: true,
+}
 const AuthContext = React.createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -32,6 +39,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const login = React.useCallback(async (email: string, password: string) => {
+    if (localPreviewAuthEnabled) {
+      const nextSession: AdminSession = {
+        ...localPreviewSession,
+        email: email || localPreviewSession.email,
+      }
+      sessionStorage.setItem(sessionStorageKey, JSON.stringify(nextSession))
+      setSession(nextSession)
+      return
+    }
+
     const payload = await apiRequest<AuthPayload>("/api/v1/passport/auth/login", {
       method: "POST",
       body: { email, password },
@@ -76,7 +93,7 @@ export function useAdminApi() {
 
 function readStoredSession(): AdminSession | null {
   const serialized = sessionStorage.getItem(sessionStorageKey)
-  if (!serialized) return null
+  if (!serialized) return localPreviewAuthEnabled ? localPreviewSession : null
 
   try {
     const parsed = JSON.parse(serialized) as Partial<AdminSession>
@@ -87,5 +104,5 @@ function readStoredSession(): AdminSession | null {
     sessionStorage.removeItem(sessionStorageKey)
   }
 
-  return null
+  return localPreviewAuthEnabled ? localPreviewSession : null
 }
