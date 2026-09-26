@@ -9,6 +9,7 @@ export type CatalogControl =
   | "tags"
   | "multiselect"
   | "slider"
+  | "color"
 
 export type CatalogCodeLanguage = "json" | "yaml" | "text"
 

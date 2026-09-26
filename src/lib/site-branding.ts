@@ -10,10 +10,11 @@ type SiteBranding = {
   adminLoginBackground: string
   adminLoginGlassOpacity: number
   adminLoginMaskOpacity: number
+  adminLoginThemeColor: string
   selfUseMode: boolean
   hiddenMenus: string[]
 }
-const defaults: SiteBranding = { appName: 'XBoard Admin', logo: '', description: '', loginTitle: '', loginDescription: '', adminLoginBackground: '', adminLoginGlassOpacity: 60, adminLoginMaskOpacity: 40, selfUseMode: false, hiddenMenus: [] }
+const defaults: SiteBranding = { appName: 'XBoard Admin', logo: '', description: '', loginTitle: '', loginDescription: '', adminLoginBackground: '', adminLoginGlassOpacity: 60, adminLoginMaskOpacity: 40, adminLoginThemeColor: '', selfUseMode: false, hiddenMenus: [] }
 let current = defaults
 let started = false
 const listeners = new Set<() => void>()
@@ -43,6 +44,7 @@ export async function refreshSiteBranding() {
       adminLoginBackground: imageUrl(data.admin_login_background),
       adminLoginGlassOpacity: integer(data.admin_login_glass_opacity, 60, 0, 95),
       adminLoginMaskOpacity: integer(data.admin_login_mask_opacity, 40, 0, 90),
+      adminLoginThemeColor: /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(text(data.admin_login_theme_color)) ? text(data.admin_login_theme_color) : '',
       selfUseMode: flag(data.self_use_mode),
       hiddenMenus: Array.isArray(data.admin_hidden_menus) ? data.admin_hidden_menus.filter((item): item is string => typeof item === 'string') : [],
     }

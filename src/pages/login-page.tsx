@@ -41,9 +41,13 @@ export function LoginPage() {
 
   const glassAlpha = brand.adminLoginGlassOpacity
   const maskAlpha = brand.adminLoginMaskOpacity / 100
+  const themeColor = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(brand.adminLoginThemeColor) ? brand.adminLoginThemeColor : ""
+  const themeStyle = themeColor
+    ? ({ "--primary": themeColor, "--ring": themeColor } as React.CSSProperties)
+    : undefined
 
   return (
-    <main className="relative min-h-dvh overflow-hidden bg-[#0b0e14]">
+    <main className="relative min-h-dvh overflow-hidden bg-[#0b0e14]" style={themeStyle}>
       {/* 背景层：自定义背景图（可调暗色遮罩）或默认深色底 */}
       <div aria-hidden="true" className="absolute inset-0">
         {brand.adminLoginBackground ? (

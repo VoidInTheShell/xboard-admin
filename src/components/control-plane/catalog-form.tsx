@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { CircleAlert, SlidersHorizontal } from 'lucide-react'
+import { CircleAlert, RotateCcw, SlidersHorizontal } from 'lucide-react'
 import type {
   CatalogCondition,
   CatalogField,
@@ -27,6 +27,7 @@ import { Input } from '@/components/ui/input'
 import {
   InputGroup,
   InputGroupAddon,
+  InputGroupButton,
   InputGroupInput,
 } from '@/components/ui/input-group'
 import {
@@ -416,6 +417,67 @@ function CatalogFieldControl({
       {content}
       <FieldError id={errorId} errors={errors?.map(message => ({ message }))} />
     </div>
+  }
+
+  if (field.control === 'color') {
+    const text = typeof value === 'string' ? value : ''
+    const swatch = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(text) ? text : '#64748b'
+    return (
+      <Field
+        data-config-field={field.key}
+        tabIndex={-1}
+        className={cn('gap-3', wrapperClass)}
+        data-invalid={invalid}
+        data-disabled={disabled}
+      >
+        <FieldLabel htmlFor={inputId}>
+          {field.label}
+          {field.required ? (
+            <span aria-hidden="true" className="text-destructive">
+              *
+            </span>
+          ) : null}
+        </FieldLabel>
+        <InputGroup>
+          <InputGroupAddon>
+            <input
+              type="color"
+              value={swatch}
+              disabled={disabled}
+              aria-label={`${field.label}取色器`}
+              className="size-6 cursor-pointer appearance-none rounded border-0 bg-transparent p-0 disabled:cursor-not-allowed disabled:opacity-50 [&::-webkit-color-swatch-wrapper]:p-0 [&::-webkit-color-swatch]:rounded [&::-webkit-color-swatch]:border-none [&::-moz-color-swatch]:rounded [&::-moz-color-swatch]:border-none"
+              onChange={(event) => update(field.key, event.target.value)}
+            />
+          </InputGroupAddon>
+          <InputGroupInput
+            id={inputId}
+            value={text}
+            disabled={disabled}
+            placeholder={field.placeholder ?? '#7c3aed'}
+            aria-invalid={invalid}
+            aria-describedby={describedBy}
+            onChange={(event) => update(field.key, event.target.value)}
+          />
+          <InputGroupAddon align="inline-end">
+            <InputGroupButton
+              aria-label="恢复默认"
+              title="恢复默认"
+              disabled={disabled || !text}
+              onClick={() => update(field.key, '')}
+            >
+              <RotateCcw />
+            </InputGroupButton>
+          </InputGroupAddon>
+        </InputGroup>
+        {field.description ? (
+          <FieldDescription>{field.description}</FieldDescription>
+        ) : null}
+        <FieldError
+          id={errorId}
+          errors={errors?.map((message) => ({ message }))}
+        />
+      </Field>
+    )
   }
 
   if (field.control === 'slider') {

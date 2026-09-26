@@ -202,6 +202,7 @@ export const systemSettingsCatalog: CatalogTab[] = [
         setting("frontend", "admin_login_background", { label: "登录页背景图片", control: "text", placeholder: "https://example.com/background.jpg", span: 2, description: "登录页整页背景图，建议横向大图。留空使用默认深色背景。" }),
         setting("frontend", "admin_login_glass_opacity", { label: "登录框毛玻璃不透明度", control: "slider", valueType: "number", defaultValue: 60, min: 0, max: 95, step: 1, description: "登录卡片的底色浓度：值越低背景越通透，越高文字越清晰。" }),
         setting("frontend", "admin_login_mask_opacity", { label: "登录页背景遮罩透明度", control: "slider", valueType: "number", defaultValue: 40, min: 0, max: 90, step: 1, description: "背景图上叠加的暗色遮罩浓度：越高背景图越暗、登录内容越突出。仅在使用自定义背景图时生效。" }),
+        setting("frontend", "admin_login_theme_color", { label: "登录页主题色", control: "color", placeholder: "#7c3aed", description: "登录按钮与表单焦点高亮使用的强调色，可用取色器选择或填写十六进制色值；留空恢复默认、跟随全局主题。" }),
       ],
     }, {
       id: "original",
