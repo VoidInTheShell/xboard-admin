@@ -1522,9 +1522,9 @@ function SubscriptionAssignmentDialog({
           <DialogTitle>分配订阅</DialogTitle>
           <DialogDescription>
             {assignment
-              ? `为 ${assignment.user.email} 直接写入订阅套餐和到期时间。`
+              ? `为 ${assignment.user.email} 分配套餐并继承流量配额、限速与设备数。`
               : ''}
-            此操作调用用户更新接口，不创建订单。
+            此操作不创建订单。
           </DialogDescription>
         </DialogHeader>
         {assignment ? (
@@ -1579,7 +1579,7 @@ function SubscriptionAssignmentDialog({
                 }
               />
               <FieldDescription>
-                留空表示长期有效；套餐权限组会由后端同步。
+                留空表示长期有效；已用流量保持不变。
               </FieldDescription>
               <FieldError
                 errors={errors.expired_at?.map((message) => ({ message }))}

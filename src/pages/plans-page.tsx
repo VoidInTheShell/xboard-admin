@@ -92,6 +92,7 @@ type Plan = {
   capacity_limit?: number | null
   tags?: string[] | null
   reset_traffic_method?: number | null
+  reset_traffic_day?: number | null
   show: boolean
   renew: boolean
   sell: boolean
@@ -108,6 +109,7 @@ type PlanForm = {
   content: string
   transferEnable: NumericValue
   resetMethod: string
+  resetDay: string
   groupId: string
   speedLimit: NumericValue
   deviceLimit: NumericValue
@@ -135,6 +137,7 @@ const resetMethods = [
   ['2', '不重置'],
   ['3', '每年 1 月 1 日'],
   ['4', '按年重置'],
+  ['5', '每月自定义日期'],
 ] as const
 
 function createEmptyForm(): PlanForm {
@@ -143,6 +146,7 @@ function createEmptyForm(): PlanForm {
     content: '',
     transferEnable: 100,
     resetMethod: 'follow',
+    resetDay: '1',
     groupId: 'none',
     speedLimit: '',
     deviceLimit: '',
@@ -200,6 +204,7 @@ export function PlansPage() {
         plan.reset_traffic_method === undefined
           ? 'follow'
           : String(plan.reset_traffic_method),
+      resetDay: String(plan.reset_traffic_day ?? 1),
       groupId: plan.group_id ? String(plan.group_id) : 'none',
       speedLimit: plan.speed_limit ?? '',
       deviceLimit: plan.device_limit ?? '',
@@ -230,6 +235,7 @@ export function PlansPage() {
         transfer_enable: numberOrNull(form.transferEnable),
         reset_traffic_method:
           form.resetMethod === 'follow' ? null : Number(form.resetMethod),
+        reset_traffic_day: form.resetMethod === '5' ? Number(form.resetDay) : null,
         group_id: form.groupId === 'none' ? null : Number(form.groupId),
         speed_limit: numberOrNull(form.speedLimit),
         device_limit: numberOrNull(form.deviceLimit),
@@ -681,6 +687,25 @@ export function PlansPage() {
                   </SelectContent>
                 </Select>
               </Field>
+              {form.resetMethod === '5' ? (
+                <Field data-invalid={Boolean(formErrors.reset_traffic_day)}>
+                  <FieldLabel htmlFor="plan-reset-day">每月重置日</FieldLabel>
+                  <Select value={form.resetDay} onValueChange={(resetDay) => setForm({ ...form, resetDay })}>
+                    <SelectTrigger id="plan-reset-day" className="w-full" aria-invalid={Boolean(formErrors.reset_traffic_day)}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {Array.from({ length: 31 }, (_, index) => index + 1).map((day) => (
+                          <SelectItem key={day} value={String(day)}>每月 {day} 日</SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  <FieldDescription>按面板时区在当天 00:00 重置；当月没有该日期时按月末重置。</FieldDescription>
+                  <FieldError errors={formErrors.reset_traffic_day?.map((message) => ({ message }))} />
+                </Field>
+              ) : null}
               <Field>
                 <FieldLabel htmlFor="plan-group">服务器可见性分组</FieldLabel>
                 <Select
