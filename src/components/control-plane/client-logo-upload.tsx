@@ -155,11 +155,28 @@ function LogoCropContent({
       setError(getErrorMessage(cause))
     }
   }
+  const cropContainer = React.useRef<HTMLDivElement>(null)
+  const [imageSize, setImageSize] = React.useState<{ width: number; height: number }>()
+  React.useEffect(() => {
+    const container = cropContainer.current
+    if (!container) return
+    const resize = () => {
+      const image = imageRef.current
+      if (!image?.naturalWidth) return
+      const scale = Math.min(1, container.clientWidth / image.naturalWidth, window.innerHeight * 0.4 / image.naturalHeight)
+      setImageSize({ width: image.naturalWidth * scale, height: image.naturalHeight * scale })
+    }
+    const observer = new ResizeObserver(resize)
+    observer.observe(container)
+    window.addEventListener('resize', resize)
+    resize()
+    return () => { observer.disconnect(); window.removeEventListener('resize', resize) }
+  }, [source, loaded])
   function resetCrop(image: HTMLImageElement) {
     return centerCrop(
-      makeAspectCrop({ unit: '%', width: 90 }, 1, image.width, image.height),
-      image.width,
-      image.height,
+      makeAspectCrop({ unit: '%', width: 100 }, 1, image.naturalWidth, image.naturalHeight),
+      image.naturalWidth,
+      image.naturalHeight,
     )
   }
   async function apply() {
@@ -215,7 +232,7 @@ function LogoCropContent({
         ) : null}
         {source ? (
           <>
-            <div className="flex min-w-0 justify-center overflow-hidden rounded-xl border bg-muted/40 p-2">
+            <div ref={cropContainer} className="flex min-w-0 justify-center overflow-hidden rounded-xl border bg-muted/40">
               <ReactCrop
                 crop={crop}
                 aspect={1}
@@ -238,7 +255,8 @@ function LogoCropContent({
                   ref={imageRef}
                   src={source}
                   alt={`待裁剪的${label}`}
-                  className="block max-h-[40dvh] max-w-full object-contain"
+                  className="block h-auto max-w-full"
+                  style={imageSize}
                   onLoad={(event) => {
                     const image = event.currentTarget
                     try {

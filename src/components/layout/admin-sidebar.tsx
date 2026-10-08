@@ -51,6 +51,7 @@ function isPathActive(pathname: string, path: string) {
 
 export function AdminSidebar() {
   const brand = useSiteBranding()
+  const [failedLogo, setFailedLogo] = React.useState('')
   const navigation = adminNavigation.map(group => ({ ...group, items: group.items.filter(item => !brand.hiddenMenus.includes(item.path) || item.path === "/settings") })).filter(group => group.items.length)
   const { pathname } = useLocation()
   const navigate = useNavigate()
@@ -75,7 +76,7 @@ export function AdminSidebar() {
               <SidebarMenuButton asChild size="lg" className="rounded-xl">
                 <Link to="/dashboard">
                   <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                    {brand.logo ? <img src={brand.logo} alt="" className="size-full rounded-lg bg-background object-contain" /> : <Network aria-hidden="true" />}
+                    {brand.logo && failedLogo !== brand.logo ? <img src={brand.logo} alt="" onError={() => setFailedLogo(brand.logo)} className="size-full rounded-lg bg-background object-contain" /> : <Network aria-hidden="true" />}
                   </span>
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-semibold">{brand.appName}</span>
@@ -112,7 +113,7 @@ export function AdminSidebar() {
                   data-slot="sidebar-brand-logo"
                   className="absolute inset-0 flex items-center justify-center rounded-lg bg-primary text-primary-foreground transition-[opacity,transform] duration-200 ease-out group-hover/brand-toggle:scale-90 group-hover/brand-toggle:opacity-0 group-focus-visible/brand-toggle:scale-90 group-focus-visible/brand-toggle:opacity-0 motion-reduce:transition-none"
                 >
-                  {brand.logo ? <img src={brand.logo} alt="" className="size-full rounded-lg bg-background object-contain" /> : <Network aria-hidden="true" />}
+                  {brand.logo && failedLogo !== brand.logo ? <img src={brand.logo} alt="" onError={() => setFailedLogo(brand.logo)} className="size-full rounded-lg bg-background object-contain" /> : <Network aria-hidden="true" />}
                 </span>
                 <span
                   data-slot="sidebar-brand-expand-icon"

@@ -128,6 +128,7 @@ export function RuntimeNodeDialog({
         },
   )
   const [certificateSelection, setCertificateSelection] = React.useState<CertificateSelection | null>(() => selectionFromNode(node))
+  const [tagsText, setTagsText] = React.useState(() => (Array.isArray(node?.tags) ? node.tags : []).join(', '))
   const [busy, setBusy] = React.useState(false)
   const update = (key: string, value: unknown) =>
     setDraft((current) => ({ ...current, [key]: value }))
@@ -135,6 +136,26 @@ export function RuntimeNodeDialog({
     setBusy(true)
     try {
       if (!String(draft.name).trim()) throw new Error('请输入实例名称')
+      if (business && node) {
+        await api.post('server/manage/update', {
+          id: node.id,
+          name: String(draft.name).trim(),
+          host: draft.host,
+          port: Number(draft.port),
+          rate: Number(draft.rate),
+          transfer_enable: Number(draft.transfer_enable ?? 0),
+          tags: [...new Set(tagsText.split(/[,，\n]/).map(value => value.trim()).filter(Boolean))],
+          group_ids: draft.group_ids,
+          rate_time_enable: Boolean(draft.rate_time_enable),
+          rate_time_ranges: draft.rate_time_ranges ?? [],
+          show: Number(Boolean(draft.show)),
+          ...(Boolean(draft.enabled) !== Boolean(node.enabled) ? { enabled: Boolean(draft.enabled) } : {}),
+        })
+        toast.success('节点已保存')
+        onSaved()
+        onClose()
+        return
+      }
       const protocol = object(draft.protocol_settings)
       const security = String(draft.security ?? inferredSecurity(protocol))
       const requirement = certificateRequirementFor(draft.type, security, protocol.network)
@@ -334,18 +355,9 @@ export function RuntimeNodeDialog({
                 <FieldLabel htmlFor="node-tags">标签</FieldLabel>
                 <Input
                   id="node-tags"
-                  value={(Array.isArray(draft.tags) ? draft.tags : []).join(
-                    ', ',
-                  )}
-                  onChange={(event) =>
-                    update(
-                      'tags',
-                      event.target.value
-                        .split(',')
-                        .map((value) => value.trim())
-                        .filter(Boolean),
-                    )
-                  }
+                  value={tagsText}
+                  placeholder="用逗号分隔多个标签"
+                  onChange={(event) => setTagsText(event.target.value)}
                 />
               </Field>
             </>

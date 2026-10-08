@@ -52,6 +52,7 @@ const statusOptions = [
   { value: 'expired', label: '已过期' },
   { value: 'issuing', label: '签发中' },
   { value: 'pending', label: '待签发' },
+  { value: 'unknown', label: '未检测' },
   { value: 'error', label: '异常' },
 ]
 
@@ -89,26 +90,21 @@ export function CertificatesPage() {
       const panelCertificates = certificatePreviewEnabled
         ? previewPanelCertificates()
         : await api.get<ServerCertificate[]>('server/certificate/fetch', { scope: 'panel' }, signal)
-      return [
+      return { machines, rows: [
         ...panelCertificates.map((certificate) => ({ ...certificate, scope: 'panel' as CertificateScope, machineName: PANEL_GROUP_LABEL })),
         ...groups.flatMap((group) =>
           group.certificates.map((certificate) => ({ ...certificate, machineName: group.machine.name })),
         ),
-      ]
+      ] }
     }, [api]),
   )
 
-  const machines = React.useMemo(() => {
-    const seen = new Map<string, string>()
-    for (const row of query.data ?? []) {
-      if (row.scope === 'panel') continue
-      seen.set(String(row.machine_id), row.machineName)
-    }
-    return [...seen.entries()].map(([id, name]) => ({ value: id, label: name }))
-  }, [query.data])
+  const machines = React.useMemo(() => (query.data?.machines ?? []).map(machine => ({
+    value: String(machine.id), label: machine.name,
+  })), [query.data])
 
   const allRows = React.useMemo(
-    () => (localUpdates?.source === query.data ? localUpdates.rows : (query.data ?? [])),
+    () => (localUpdates?.source === query.data ? localUpdates.rows : (query.data?.rows ?? [])),
     [localUpdates, query.data],
   )
 
@@ -194,7 +190,9 @@ export function CertificatesPage() {
     }
   }
 
-  const rowActions = (row: CertificateRow) => (
+  const rowActions = (row: CertificateRow) => row.read_only ? (
+    <Badge variant="outline">现有节点配置</Badge>
+  ) : (
     <div className="flex justify-end gap-1">
       <Button variant="ghost" size="sm" onClick={() => void renew(row)} disabled={renewing === row.id || row.status === 'issuing'}>
         <RotateCw data-icon="inline-start" />
@@ -221,6 +219,7 @@ export function CertificatesPage() {
       <td className="px-4 py-4 sm:px-5">
         <div className="font-medium">{row.name}</div>
         <div className="mt-1 max-w-64 truncate text-xs text-muted-foreground" title={row.domains.join(', ')}>{row.domains.join(', ')}</div>
+        {row.read_only && row.certificate_path ? <div className="mt-1 max-w-64 truncate text-xs text-muted-foreground" title={row.certificate_path}>{row.certificate_path}</div> : null}
       </td>
       {showMachine ? (
         <td className="px-4 py-4">
@@ -232,14 +231,15 @@ export function CertificatesPage() {
         </td>
       ) : null}
       <td className="whitespace-nowrap px-4 py-4">{certificateSourceLabels[row.source_type]}</td>
-      <td className="px-4 py-4">{row.auto_renew ? <Badge variant="secondary">开启</Badge> : <Badge variant="outline">关闭</Badge>}</td>
+      <td className="px-4 py-4">{row.read_only ? <Badge variant="outline">外部管理</Badge> : row.auto_renew ? <Badge variant="secondary">开启</Badge> : <Badge variant="outline">关闭</Badge>}</td>
       <td className="px-4 py-4">
         <StatusBadge tone={certificateStatusTone(row.status)} label={certificateStatusLabels[row.status]} />
         {row.last_error && <p className="mt-1 max-w-40 text-xs text-destructive">{row.last_error}</p>}
       </td>
       <td className="px-4 py-4">
         <span className={row.status === 'expired' || row.status === 'expiring' ? 'font-medium text-destructive' : ''}>{certificateExpiryLabel(row.expires_at)}</span>
-      </td>      <td className="whitespace-nowrap px-4 py-4"><span className="font-data text-xs text-muted-foreground">{row.references.length} 个</span></td>
+      </td>
+      <td className="whitespace-nowrap px-4 py-4"><span className="font-data text-xs text-muted-foreground">{row.references.length} 个</span></td>
       <td className={stickyActions
         ? 'sticky right-0 z-10 bg-background px-4 py-4 shadow-[-6px_0_8px_-6px_rgba(0,0,0,0.12)]'
         : 'px-4 py-4'}

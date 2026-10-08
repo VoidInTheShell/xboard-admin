@@ -1,3 +1,4 @@
+import { withRoutingPresets } from '@/lib/control-plane/routing-presets'
 import * as React from 'react'
 import {
   ArrowDown,
@@ -126,9 +127,10 @@ const ruleConditionLabels: Record<string, string> = {
 }
 
 function formatRuleConditionValue(value: unknown) {
-  if (Array.isArray(value)) return value.map(String).join(', ')
+  if (Array.isArray(value)) return value.slice(0, 3).map(item => String(item).slice(0, 80)).join(', ') + (value.length > 3 ? ` … 共 ${value.length} 项` : '')
   if (value && typeof value === 'object') return JSON.stringify(value)
-  return String(value)
+  const text = String(value)
+  return text.length > 160 ? `${text.slice(0, 160)}…` : text
 }
 
 function describeRuleConditions(rule: JsonObject) {
@@ -987,6 +989,10 @@ export function ServerWorkspacePage() {
                         },
                       ]}
                     />
+                    <Button variant="outline" disabled={bulkBusy} onClick={async () => {
+                      try { await updateRules(withRoutingPresets(rules)); toast.success('已补充阻断预设，可按需启用') }
+                      catch (error) { toast.error(getErrorMessage(error)) }
+                    }}>补充阻断预设</Button>
                     <Button
                       disabled={bulkBusy}
                       onClick={() =>
@@ -1064,7 +1070,7 @@ export function ServerWorkspacePage() {
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            <span className="text-xs">
+                            <span className="block max-w-64 truncate text-xs" title={describeRuleConditions(item)}>
                               {describeRuleConditions(item)}
                             </span>
                           </TableCell>

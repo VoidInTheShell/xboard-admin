@@ -7,6 +7,9 @@ type SiteBranding = {
   description: string
   loginTitle: string
   loginDescription: string
+  adminLoginImage: string
+  adminLoginImageWidth: number
+  adminLoginImageHeight: number
   adminLoginBackground: string
   adminLoginGlassOpacity: number
   adminLoginMaskOpacity: number
@@ -14,7 +17,7 @@ type SiteBranding = {
   selfUseMode: boolean
   hiddenMenus: string[]
 }
-const defaults: SiteBranding = { appName: 'XBoard Admin', logo: '', description: '', loginTitle: '', loginDescription: '', adminLoginBackground: '', adminLoginGlassOpacity: 60, adminLoginMaskOpacity: 40, adminLoginThemeColor: '', selfUseMode: false, hiddenMenus: [] }
+const defaults: SiteBranding = { appName: 'XBoard Admin', logo: '', description: '', loginTitle: '', loginDescription: '', adminLoginImage: '', adminLoginImageWidth: 160, adminLoginImageHeight: 160, adminLoginBackground: '', adminLoginGlassOpacity: 60, adminLoginMaskOpacity: 40, adminLoginThemeColor: '', selfUseMode: false, hiddenMenus: [] }
 let current = defaults
 let started = false
 const listeners = new Set<() => void>()
@@ -41,6 +44,9 @@ export async function refreshSiteBranding() {
       description: text(data.app_description),
       loginTitle: text(data.user_login_title),
       loginDescription: text(data.user_login_description),
+      adminLoginImage: imageUrl(data.admin_login_image),
+      adminLoginImageWidth: integer(data.admin_login_image_width, 160, 32, 400),
+      adminLoginImageHeight: integer(data.admin_login_image_height, 160, 32, 400),
       adminLoginBackground: imageUrl(data.admin_login_background),
       adminLoginGlassOpacity: integer(data.admin_login_glass_opacity, 60, 0, 95),
       adminLoginMaskOpacity: integer(data.admin_login_mask_opacity, 40, 0, 90),

@@ -6,6 +6,7 @@ export type CertificateSourceType =
   | 'self_signed'
 
 export type CertificateStatus =
+  | 'unknown'
   | 'pending'
   | 'issuing'
   | 'valid'
@@ -26,6 +27,7 @@ export type CertificateScope = 'machine' | 'panel'
 
 export type ServerCertificate = {
   id: string
+  read_only?: boolean
   scope?: CertificateScope
   machine_id: number | null
   name: string
@@ -75,6 +77,7 @@ export function sourceOptionsFor(scope: CertificateScope): [CertificateSourceTyp
 }
 
 export const certificateStatusLabels: Record<CertificateStatus, string> = {
+  unknown: '未检测',
   pending: '待签发',
   issuing: '签发中',
   valid: '有效',
@@ -128,7 +131,7 @@ export function certificateExpiryLabel(expiresAt: string | null, now = Date.now(
 
 export function selectableCertificates(certificates: ServerCertificate[]) {
   return certificates.filter((certificate) =>
-    ['valid', 'pending', 'issuing', 'expiring'].includes(certificate.status),
+    !certificate.read_only && ['valid', 'pending', 'issuing', 'expiring'].includes(certificate.status),
   )
 }
 

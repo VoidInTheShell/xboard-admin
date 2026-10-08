@@ -71,7 +71,7 @@ export function LoginPage() {
       <div className="relative z-20 flex min-h-dvh items-center justify-center px-4 py-8 sm:px-6 lg:p-0">
         {/* 登录面板：移动端居中卡片；桌面端为左侧悬浮全高瀑布毛玻璃面板（左侧留 10% 空隙，覆盖至页面顶端） */}
         <section
-          className="relative w-full max-w-[26.5rem] overflow-hidden rounded-3xl border border-white/25 shadow-[0_24px_70px_-20px_rgba(2,6,17,0.65)] backdrop-blur-2xl dark:border-white/12 lg:absolute lg:inset-y-0 lg:left-[10%] lg:z-10 lg:my-0 lg:w-[30rem] lg:max-w-none lg:rounded-none"
+          className="relative w-full max-w-[18rem] sm:max-w-[26.5rem] overflow-hidden rounded-3xl border border-white/25 shadow-[0_24px_70px_-20px_rgba(2,6,17,0.65)] backdrop-blur-2xl dark:border-white/12 lg:absolute lg:inset-y-0 lg:left-[10%] lg:z-10 lg:my-0 lg:w-[30rem] lg:max-w-none lg:rounded-none"
           style={{ backgroundColor: `color-mix(in srgb, var(--card) ${glassAlpha}%, transparent)` }}
           aria-label="管理员登录"
         >
@@ -84,23 +84,23 @@ export function LoginPage() {
             className="pointer-events-none absolute inset-0 rounded-3xl border-t border-white/35 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.22)] lg:rounded-none"
           />
 
-          <div className="relative flex h-full flex-col px-6 py-6 sm:px-8 sm:py-8 lg:px-11 lg:pb-[10vh] lg:pt-0">
+          <div className="relative flex h-full flex-col px-4 py-4 sm:px-8 sm:py-8 lg:px-11 lg:pb-[10vh] lg:pt-0">
             {/* 站点品牌：仅保留图标，放大后居中于登录表单上方的毛玻璃区域 */}
-            <header className="flex flex-1 items-center justify-center pb-8 lg:pb-10">
-              {brand.logo ? (
+            <header className="flex flex-1 items-center justify-center pb-4 lg:pb-10" style={{ "--login-image-width": `${brand.adminLoginImageWidth}px`, "--login-image-height": `${brand.adminLoginImageHeight}px` } as React.CSSProperties}>
+              {brand.adminLoginImage ? (
                 <img
-                  src={brand.logo}
+                  src={brand.adminLoginImage}
                   alt={brand.appName}
-                  className="size-40 shrink-0 object-contain drop-shadow-[0_10px_36px_rgba(2,6,17,0.55)] lg:size-[200px]"
+                  className="h-[calc(var(--login-image-height)/2)] w-[calc(var(--login-image-width)/2)] max-w-full shrink-0 object-contain lg:h-[var(--login-image-height)] lg:w-[var(--login-image-width)]"
                 />
               ) : (
-                <span className="flex size-40 shrink-0 items-center justify-center rounded-3xl border border-white/25 bg-white/10 text-white shadow-sm lg:size-[200px]">
-                  <Network className="size-16 lg:size-24" aria-hidden="true" />
+                <span className="flex size-16 shrink-0 items-center justify-center rounded-2xl border border-white/25 bg-white/10 text-white shadow-sm lg:size-40">
+                  <Network className="size-8 lg:size-20" aria-hidden="true" />
                 </span>
               )}
             </header>
 
-            <form onSubmit={submit} className="flex w-full flex-col gap-5 lg:mx-auto lg:max-w-sm">
+            <form onSubmit={submit} className="flex w-full flex-col gap-3 sm:gap-5 lg:mx-auto lg:max-w-sm">
                 {error ? (
                   <Alert variant="destructive">
                     <AlertCircle aria-hidden="true" />
@@ -108,8 +108,8 @@ export function LoginPage() {
                     <AlertDescription>{error}</AlertDescription>
                   </Alert>
                 ) : null}
-                <FieldGroup>
-                  <Field>
+                <FieldGroup className="gap-3 sm:gap-6">
+                  <Field className="gap-1.5">
                     <FieldLabel htmlFor="admin-email">管理员邮箱</FieldLabel>
                     <Input
                       id="admin-email"
@@ -121,7 +121,7 @@ export function LoginPage() {
                       required
                     />
                   </Field>
-                  <Field data-invalid={Boolean(error) || undefined}>
+                  <Field className="gap-1.5" data-invalid={Boolean(error) || undefined}>
                     <FieldLabel htmlFor="admin-password">密码</FieldLabel>
                     <Input
                       id="admin-password"

@@ -8,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 const MAX_BACKGROUND_BYTES = 8 * 1024 * 1024
 
-export function LoginBackgroundField({ value, file, disabled, onValueChange, onFileChange }: {
+export function LoginBackgroundField({ value, file, disabled, onValueChange, onFileChange, displayImage = false }: {
+  displayImage?: boolean
   value: string
   file: File | null
   disabled: boolean
@@ -39,7 +40,7 @@ export function LoginBackgroundField({ value, file, disabled, onValueChange, onF
 
   return (
     <FieldSet className="min-w-0 rounded-2xl border p-4" disabled={disabled}>
-      <FieldLegend>登录页背景图片</FieldLegend>
+      <FieldLegend>{displayImage ? '登录卡片展示图片' : '登录页背景图片'}</FieldLegend>
       <div className="grid min-w-0 gap-4 @min-[34rem]/catalog-section:grid-cols-2">
         <Field className="min-w-0">
           <FieldLabel htmlFor={sourceId}>来源</FieldLabel>
@@ -53,25 +54,25 @@ export function LoginBackgroundField({ value, file, disabled, onValueChange, onF
         </Field>
         {source === 'url' ? (
           <Field className="min-w-0">
-            <FieldLabel htmlFor={urlId}>背景图片 URL</FieldLabel>
+            <FieldLabel htmlFor={urlId}>{displayImage ? '展示图片 URL' : '背景图片 URL'}</FieldLabel>
             <Input id={urlId} value={value} disabled={disabled} onChange={event => onValueChange(event.target.value)} placeholder="https://example.com/background.jpg" />
           </Field>
         ) : (
           <Field className="min-w-0">
             <FieldLabel htmlFor={fileId}>图片文件</FieldLabel>
             <Input id={fileId} type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" disabled={disabled} onChange={event => { selectFile(event.target.files?.[0]); event.target.value = '' }} />
-            <FieldDescription>支持 PNG、JPG、WebP，最大 8 MB；保存配置时上传。未替换时保留已有背景。</FieldDescription>
+            <FieldDescription>支持 PNG、JPG、WebP，最大 8 MB；保存配置时上传。未替换时保留已有图片。</FieldDescription>
           </Field>
         )}
       </div>
       {(previewUrl || value) ? (
         <div className="mt-3 overflow-hidden rounded-xl border">
-          <img src={previewUrl || value} alt="登录页背景预览" className="h-32 w-full object-cover" />
+          <img src={previewUrl || value} alt={displayImage ? "登录卡片图片预览" : "登录页背景预览"} className={`h-32 w-full ${displayImage ? "object-contain" : "object-cover"}`} />
         </div>
       ) : (
         <div className="mt-3 flex h-32 flex-col items-center justify-center gap-2 rounded-xl border border-dashed text-muted-foreground">
           <ImageIcon className="size-8" aria-hidden="true" />
-          <p className="text-sm">尚未设置背景，登录页使用默认深色背景</p>
+          <p className="text-sm">{displayImage ? '尚未设置图片，使用默认图标' : '尚未设置背景，登录页使用默认深色背景'}</p>
         </div>
       )}
       {file ? (
@@ -83,7 +84,7 @@ export function LoginBackgroundField({ value, file, disabled, onValueChange, onF
         </ButtonGroup>
       ) : null}
       {error ? <p className="mt-2 text-sm text-destructive" role="alert">{error}</p> : null}
-      <FieldDescription>整页铺展显示，登录框会叠加毛玻璃效果；建议横向、主体居中的大图。</FieldDescription>
+      <FieldDescription>{displayImage ? '仅用于管理后台登录卡片，保持图片比例并居中显示。' : '整页铺展显示，登录框会叠加毛玻璃效果；建议横向、主体居中的大图。'}</FieldDescription>
     </FieldSet>
   )
 }
