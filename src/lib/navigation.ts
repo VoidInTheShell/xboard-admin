@@ -66,7 +66,7 @@ export const adminNavigation: AdminNavGroup[] = [
     ],
   },
   {
-    label: "用户与订阅",
+    label: "用户与套餐",
     icon: Users,
     items: [
       { title: "用户管理", path: "/users", icon: Users },

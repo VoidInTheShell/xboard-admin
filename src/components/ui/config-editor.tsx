@@ -38,6 +38,7 @@ type ConfigEditorProps = {
   rows?: number
   className?: string
   disabled?: boolean
+  preview?: boolean
 }
 
 const languageLabels: Record<ConfigEditorLanguage, string> = {
@@ -67,6 +68,7 @@ function EditorSurface({
   placeholder,
   height,
   disabled,
+  preview,
 }: Omit<ConfigEditorProps, "rows" | "className" | "language"> & {
   language: ConfigEditorLanguage
   height: number | string
@@ -93,15 +95,16 @@ function EditorSurface({
           guides: { bracketPairs: true, indentation: true },
           lineHeight: 22,
           lineNumbers: "on",
-          minimap: { enabled: true, maxColumn: 80, renderCharacters: false },
+          lineNumbersMinChars: preview ? 3 : 5,
+          minimap: { enabled: !preview, maxColumn: 80, renderCharacters: false },
           padding: { top: 12, bottom: 12 },
           renderLineHighlight: "line",
           scrollBeyondLastLine: false,
           smoothScrolling: true,
           tabSize: 2,
           wordWrap: "on",
-          wrappingIndent: "indent",
-          readOnly: disabled,
+          wrappingIndent: preview ? "none" : "indent",
+          readOnly: disabled || preview,
         }}
       />
       {!value && placeholder ? (
@@ -122,7 +125,9 @@ export function ConfigEditor({
   rows = 8,
   className,
   disabled = false,
+  preview = false,
 }: ConfigEditorProps) {
+  const fullscreenTriggerRef = React.useRef<HTMLButtonElement>(null)
   const [fullscreenOpen, setFullscreenOpen] = React.useState(false)
   const [clearArmed, setClearArmed] = React.useState(false)
   const jsonState = React.useMemo(() => getJsonState(value, language), [language, value])
@@ -176,7 +181,7 @@ export function ConfigEditor({
       </div>
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <ButtonGroup aria-label={`${label}编辑器操作`}>
-          <Button type="button" variant="outline" size="sm" disabled={disabled || language !== "json" || !value.trim()} onClick={formatJson}>
+          <Button type="button" variant="outline" size="sm" disabled={disabled || preview || language !== "json" || !value.trim()} onClick={formatJson}>
             <WandSparkles data-icon="inline-start" aria-hidden="true" />
             格式化
           </Button>
@@ -190,15 +195,15 @@ export function ConfigEditor({
           variant={clearArmed ? "destructive" : "outline"}
           size="sm"
           className={clearArmed ? undefined : "text-destructive hover:text-destructive"}
-          disabled={disabled || !value}
+          disabled={disabled || preview || !value}
           onClick={clearValue}
         >
           <Trash2 data-icon="inline-start" aria-hidden="true" />
           {clearArmed ? "确认清空" : "清空"}
         </Button>
-        <Button type="button" variant="outline" size="sm" onClick={() => setFullscreenOpen(true)}>
+        <Button ref={fullscreenTriggerRef} type="button" variant="outline" size="sm" onClick={() => setFullscreenOpen(true)}>
           <Expand data-icon="inline-start" aria-hidden="true" />
-          全屏编辑
+          {preview ? "全屏预览" : "全屏编辑"}
         </Button>
       </div>
     </div>
@@ -216,6 +221,7 @@ export function ConfigEditor({
           placeholder={placeholder}
           height={editorHeight}
           disabled={disabled}
+          preview={preview}
         />
         <div className="flex flex-wrap items-center justify-between gap-2 border-t bg-muted/25 px-3 py-2 text-[11px] text-muted-foreground">
           <span className="font-data">共 {lineCount} 行 · {value.length} 字符</span>
@@ -231,10 +237,11 @@ export function ConfigEditor({
           bodyClassName="overflow-hidden p-5 sm:p-5"
           className="h-[calc(100dvh-2rem)] max-h-none w-[calc(100vw-2rem)] max-w-none sm:max-w-none"
           showCloseButton={false}
+          onCloseAutoFocus={preview ? (event) => { event.preventDefault(); fullscreenTriggerRef.current?.focus() } : undefined}
         >
           <DialogHeader className="pr-0">
             <DialogTitle>{label}</DialogTitle>
-            <DialogDescription>全屏配置编辑器 · {languageLabels[language]} · 修改会同步回当前表单。</DialogDescription>
+            <DialogDescription>{preview ? `只读预览 · ${languageLabels[language]}` : `全屏配置编辑器 · ${languageLabels[language]} · 修改会同步回当前表单。`}</DialogDescription>
           </DialogHeader>
           <div className="min-h-0 flex-1 overflow-hidden rounded-2xl border shadow-sm">
             <EditorSurface
@@ -245,6 +252,7 @@ export function ConfigEditor({
               placeholder={placeholder}
               height="100%"
               disabled={disabled}
+              preview={preview}
             />
           </div>
           <DialogFooter className="items-center sm:justify-between">
@@ -254,7 +262,7 @@ export function ConfigEditor({
             </div>
             <Button type="button" onClick={() => setFullscreenOpen(false)}>
               <Check data-icon="inline-start" aria-hidden="true" />
-              完成编辑
+              {preview ? "关闭预览" : "完成编辑"}
             </Button>
           </DialogFooter>
         </DialogContent>

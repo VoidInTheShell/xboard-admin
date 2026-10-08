@@ -2,6 +2,7 @@ import * as React from "react"
 import { AlertCircle, Check, LoaderCircle, RefreshCw, Save } from "lucide-react"
 import { toast } from "sonner"
 import { CatalogForm, type CatalogFieldErrors, type CatalogValues } from "@/components/control-plane/catalog-form"
+import { RemoteTemplateDialog } from "@/components/subscriptions/remote-template-dialog"
 import { PageHeader } from "@/components/layout/page-header"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -77,7 +78,7 @@ export function SubscriptionManagementPage() {
 
   return (
     <div className="mx-auto w-full max-w-[1600px]">
-      <PageHeader title="订阅管理" description="维护各客户端使用的订阅配置模板。" action={<div className="flex flex-wrap items-center justify-end gap-2"><Badge variant={dirtyCount ? "outline" : "secondary"} className="font-data text-[10px]">{dirtyCount ? `${dirtyCount} 份待保存` : "已与后端同步"}</Badge><Button disabled={!baseline || !dirtyCount || saving || loading} onClick={() => void saveTemplates()}>{saving ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" aria-hidden="true" /> : dirtyCount ? <Save data-icon="inline-start" aria-hidden="true" /> : <Check data-icon="inline-start" aria-hidden="true" />}{saving ? "保存中" : "保存模板"}</Button></div>} />
+      <PageHeader title="订阅管理" description="维护各客户端使用的订阅配置模板。" action={<div className="flex flex-wrap items-center justify-end gap-2"><Badge variant={dirtyCount ? "outline" : "secondary"} className="font-data text-[10px]">{dirtyCount ? `${dirtyCount} 份待保存` : "已与后端同步"}</Badge><RemoteTemplateDialog disabled={!baseline || saving || loading || dirtyCount > 0} onApplied={() => setReloadVersion((current) => current + 1)} /><Button disabled={!baseline || !dirtyCount || saving || loading} onClick={() => void saveTemplates()}>{saving ? <LoaderCircle className="animate-spin motion-reduce:animate-none" data-icon="inline-start" aria-hidden="true" /> : dirtyCount ? <Save data-icon="inline-start" aria-hidden="true" /> : <Check data-icon="inline-start" aria-hidden="true" />}{saving ? "保存中" : "保存模板"}</Button></div>} />
       {loadError ? <Alert variant="destructive" className="mb-4"><AlertCircle aria-hidden="true" /><AlertTitle>订阅模板读取失败</AlertTitle><AlertDescription className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between"><span>{loadError}</span><Button variant="outline" size="sm" onClick={() => setReloadVersion((current) => current + 1)}><RefreshCw data-icon="inline-start" aria-hidden="true" />重新读取</Button></AlertDescription></Alert> : null}
       <Card className="gap-0 py-0 shadow-none"><CardContent className="p-4 sm:p-5">{loading && !baseline ? <TemplateSkeleton /> : baseline ? <CatalogForm tabs={subscriptionTemplateCatalog} ariaLabel="订阅模板格式" values={values} errors={fieldErrors} disabled={saving || loading} onValuesChange={(next) => { setValues(next); if (Object.keys(fieldErrors).length) setFieldErrors({}) }} navigationStyle="sidebar" navigationLabel="模板格式" sidebarStickyOffset="page" /> : null}</CardContent></Card>
     </div>
